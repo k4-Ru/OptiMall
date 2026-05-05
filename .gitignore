@@ -1,0 +1,11 @@
+node_modules
+.env
+__pycache__
+*.pyc
+.DS_Store
+dist
+coverage
+
+
+Optimal_Architecture.md
+.env

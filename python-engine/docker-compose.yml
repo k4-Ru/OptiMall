@@ -1,0 +1,14 @@
+services:
+  python-engine:
+    build: .
+    container_name: optimall-python-engine
+    ports:
+      - "8000:8000"
+    environment:
+      MYSQL_HOST: host.docker.internal
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ""
+      MYSQL_DATABASE: optimall
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
