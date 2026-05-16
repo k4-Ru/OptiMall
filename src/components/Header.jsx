@@ -1,8 +1,15 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 export default function Header({ searchQuery, onSearchChange }) {
   const location = useLocation();
   const path = location.pathname;
+  const [isLocationOpen, setIsLocationOpen] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState('Metro Manila');
+  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+
+  const phLocations = ['Metro Manila', 'Cebu City', 'Davao City', 'Baguio City', 'Palawan'];
+  const categories = ['Tech', 'Home', 'Lifestyle', 'Accessories'];
 
   return (
     <header className="bg-[#1A2A54] text-white shadow-sm">
@@ -71,11 +78,33 @@ export default function Header({ searchQuery, onSearchChange }) {
         <div className="mx-auto flex max-w-[1440px] items-center justify-between px-8 py-2.5">
           <div className="flex items-center gap-8">
             {/* Categories Dropdown */}
-            <button className="flex items-center gap-2 rounded-md bg-[#2A3A6A] px-4 py-2 text-sm font-medium text-white hover:bg-[#345B9A]">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-              All Categories
-              <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </button>
+            <div className="relative z-50">
+              <button 
+                onClick={() => setIsCategoryOpen(!isCategoryOpen)}
+                className="flex items-center gap-2 rounded-md bg-[#2A3A6A] px-4 py-2 text-sm font-medium text-white hover:bg-[#345B9A]"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                All Categories
+                <svg className={`ml-2 h-4 w-4 transition-transform ${isCategoryOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+
+              {isCategoryOpen && (
+                <div className="absolute left-0 top-full mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5">
+                  <div className="py-1">
+                    {categories.map((cat) => (
+                      <Link
+                        key={cat}
+                        to={`/products?category=${cat.toLowerCase()}`}
+                        onClick={() => setIsCategoryOpen(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                      >
+                        {cat}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <nav className="flex items-center gap-8 text-sm font-medium text-[#B4C5E3]">
               <Link to="/home" className={`pb-1 hover:text-white ${path.includes('/home') || path === '/' ? 'border-b-2 border-[#FF6B00] text-white' : ''}`}>Home</Link>
@@ -87,15 +116,42 @@ export default function Header({ searchQuery, onSearchChange }) {
           </div>
 
           {/* Delivery Location */}
-          <div className="flex items-center gap-2 text-sm text-[#B4C5E3]">
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <div className="flex flex-col">
-              <span className="text-[10px] leading-tight text-gray-400">Deliver to</span>
-              <span className="font-medium text-white flex items-center gap-1">New Delhi, 110001 <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg></span>
-            </div>
+          <div className="relative">
+            <button 
+              onClick={() => setIsLocationOpen(!isLocationOpen)}
+              className="flex items-center gap-2 text-sm text-[#B4C5E3] hover:text-white"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <div className="flex flex-col text-left">
+                <span className="text-[10px] leading-tight text-gray-400">Deliver to</span>
+                <span className="font-medium text-white flex items-center gap-1">
+                  {selectedLocation} <svg className={`h-3 w-3 transition-transform ${isLocationOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </span>
+              </div>
+            </button>
+
+            {/* Location Dropdown */}
+            {isLocationOpen && (
+              <div className="absolute right-0 top-full mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50">
+                <div className="py-1">
+                  {phLocations.map((loc) => (
+                    <button
+                      key={loc}
+                      onClick={() => {
+                        setSelectedLocation(loc);
+                        setIsLocationOpen(false);
+                      }}
+                      className={`block w-full px-4 py-2 text-left text-sm ${selectedLocation === loc ? 'bg-gray-100 font-semibold text-gray-900' : 'text-gray-700 hover:bg-gray-50'}`}
+                    >
+                      {loc}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

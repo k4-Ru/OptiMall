@@ -148,7 +148,7 @@ function HotBundlesSection() {
     <section id="bundles" className="mx-auto max-w-[1440px] px-8 pt-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
-          <span className="text-xl">🔥</span>
+          <img src="/images/fire.png" alt="Hot" className="h-6 w-6 object-contain" />
           <h2 className="text-xl font-extrabold text-gray-900">Hot Bundles</h2>
         </div>
         <button className="group flex items-center gap-1 text-sm font-semibold text-[#FF6B00] hover:text-[#E65C00]">
@@ -200,7 +200,7 @@ function YouMightLikeSection() {
     <section id="products" className="mx-auto max-w-[1440px] px-8 pb-16 pt-10">
       {/* Badge */}
       <div className="mb-6 inline-flex items-center gap-2 rounded-md border border-[#FFE8D6] bg-[#FFF5ED] px-3 py-1.5 text-xs font-semibold text-[#FF6B00]">
-        <span>📌</span>
+        <img src="/images/pin.png" alt="Pin" className="h-4 w-4 object-contain" />
         <span>Picked for you based on recent views</span>
       </div>
 
