@@ -1,185 +1,260 @@
-import { useClerk } from '@clerk/clerk-react';
-import {
-  Bell,
-  ShoppingCart,
-  Search,
-  Store,
-  ChevronRight,
-} from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import Header from '../components/Header';
 
-export default function HomePage() {
-  const { signOut } = useClerk();
+/* ───────────────────── Mock Data ───────────────────── */
+const hotBundles = [
+  {
+    id: 1,
+    name: 'WiFi Setup Bundle',
+    items: 'Router + Extender + Charger',
+    price: 4299,
+    originalPrice: 5000,
+    discount: 20,
+    aiPick: true,
+    images: ['/images/earbuds_1778761100549.png', '/images/laptop_stand_1778761221119.png', '/images/smart_bulb_1778761335652.png'],
+  },
+  {
+    id: 2,
+    name: 'Morning Ritual',
+    items: 'Coffee + Snacks + Bottle',
+    price: 899,
+    originalPrice: 1200,
+    discount: 25,
+    aiPick: false,
+    images: ['/images/vacuum_flask_1778762004829.png', '/images/smart_bulb_1778761335652.png', '/images/earbuds_1778761100549.png'],
+  },
+  {
+    id: 3,
+    name: 'Work From Home',
+    items: 'Keyboard + Mouse + Mousepad',
+    price: 1999,
+    originalPrice: 2800,
+    discount: 29,
+    aiPick: true,
+    images: ['/images/laptop_stand_1778761221119.png', '/images/alarm_clock_1778761477434.png', '/images/earbuds_1778761100549.png'],
+  },
+  {
+    id: 4,
+    name: 'Fitness Essentials',
+    items: 'Bottle + Towel + Band',
+    price: 749,
+    originalPrice: 1000,
+    discount: 25,
+    aiPick: false,
+    images: ['/images/vacuum_flask_1778762004829.png', '/images/smart_bulb_1778761335652.png', '/images/bluetooth_speaker_1778761745117.png'],
+  },
+];
+
+const categories = ['All', 'Tech', 'Home', 'Lifestyle', 'Accessories'];
+
+const products = [
+  { id: 1, name: 'Wireless Earbuds Pro Max', price: 1299, rating: 4.8, reviews: 245, category: 'Tech', image: '/images/earbuds_1778761100549.png' },
+  { id: 2, name: 'Laptop Stand Foldable', price: 599, rating: 4.5, reviews: 128, category: 'Tech', image: '/images/laptop_stand_1778761221119.png' },
+  { id: 3, name: 'Smart LED Bulb', price: 299, rating: 4.7, reviews: 312, category: 'Home', image: '/images/smart_bulb_1778761335652.png' },
+  { id: 4, name: 'Digital Alarm Clock', price: 499, rating: 4.3, reviews: 84, category: 'Home', image: '/images/alarm_clock_1778761477434.png' },
+  { id: 5, name: 'Bluetooth Speaker', price: 1099, rating: 4.6, reviews: 210, category: 'Tech', image: '/images/bluetooth_speaker_1778761745117.png' },
+];
+
+function formatPrice(price) {
+  return `₱${price.toLocaleString()}`;
+}
+
+function StarRating({ rating, reviews }) {
+  const full = Math.floor(rating);
+  const hasHalf = rating % 1 >= 0.3;
+  return (
+    <div className="flex items-center gap-1">
+      <div className="flex items-center">
+        {[...Array(5)].map((_, i) => (
+          <svg
+            key={i}
+            className={`h-4 w-4 ${i < full ? 'text-[#FF6B00]' : i === full && hasHalf ? 'text-[#FF8C33]' : 'text-gray-200'}`}
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.065 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z" />
+          </svg>
+        ))}
+      </div>
+      <span className="text-xs font-medium text-gray-400">({reviews})</span>
+    </div>
+  );
+}
+
+
+/* ─────────── Smart Bundles Banner ─────────── */
+function SmartBundlesBanner() {
+  return (
+    <section className="mx-auto max-w-[1440px] px-8 pt-8">
+      <div className="relative flex items-center justify-between overflow-hidden rounded-xl bg-[#2A3A6A] px-8 py-5 shadow-sm">
+        <div className="flex items-center gap-4">
+           <div className="text-3xl">✨</div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Smart Bundles for You</h2>
+            <p className="mt-0.5 text-sm text-[#B4C5E3]">AI-picked deals based on your activity</p>
+          </div>
+        </div>
+        <Link to="/smart-bundles" className="rounded-lg bg-[#FF6B00] px-6 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#E65C00]">
+          View All
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+/* ────────────── Bundle Card ────────────── */
+function BundleCard({ bundle }) {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-[#FFE8D6] bg-white p-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-shadow hover:shadow-[0_8px_20px_-6px_rgba(6,81,237,0.15)]">
+      {/* Images container */}
+      <div className="relative mb-5 flex justify-between gap-3">
+         {bundle.aiPick && (
+            <span className="absolute -right-2 -top-2 z-10 rounded bg-[#FF6B00] px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+              AI Pick
+            </span>
+          )}
+        {bundle.images.map((img, idx) => (
+          <div key={idx} className="flex h-[72px] w-1/3 items-center justify-center rounded-xl bg-[#FFFDF9] p-2 border border-[#FFE8D6]">
+             <img src={img} alt="Bundle item" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+          </div>
+        ))}
+      </div>
+
+      {/* Info */}
+      <div className="flex flex-1 flex-col">
+        <h3 className="text-sm font-bold text-gray-900">{bundle.name}</h3>
+        <p className="mt-1 text-xs text-gray-500">{bundle.items}</p>
+
+        <div className="mt-4 flex items-center gap-2">
+          <span className="text-lg font-extrabold text-[#FF6B00]">{formatPrice(bundle.price)}</span>
+          <span className="text-xs text-gray-400 line-through">{formatPrice(bundle.originalPrice)}</span>
+        </div>
+        <span className="mt-1 text-[11px] font-bold text-[#00B074]">
+          Save {bundle.discount}%
+        </span>
+
+        <button className="mt-5 w-full rounded-lg bg-[#1A2A54] py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#101B3A]">
+          Add Bundle to Cart
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────── Hot Bundles Section ──────────── */
+function HotBundlesSection() {
+  return (
+    <section id="bundles" className="mx-auto max-w-[1440px] px-8 pt-8">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2">
+          <img src="/images/fire.png" alt="Hot" className="h-6 w-6 object-contain" />
+          <h2 className="text-xl font-extrabold text-gray-900">Hot Bundles</h2>
+        </div>
+        <button className="group flex items-center gap-1 text-sm font-semibold text-[#FF6B00] hover:text-[#E65C00]">
+          See all
+          <svg className="h-4 w-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
+        </button>
+      </div>
+
+      {/* Grid for desktop */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {hotBundles.map((bundle) => (
+          <BundleCard key={bundle.id} bundle={bundle} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ──────────── Product Card ──────────── */
+function ProductCard({ product }) {
+  return (
+    <div className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)]">
+      <div className="relative mb-5 flex h-[160px] items-center justify-center">
+        <img src={product.image} alt={product.name} className="max-h-full max-w-full object-contain" />
+      </div>
+
+      <div className="flex flex-col">
+        <h3 className="text-[13px] font-bold text-gray-800 line-clamp-2 min-h-[38px]">{product.name}</h3>
+        <div className="mt-2">
+          <StarRating rating={product.rating} reviews={product.reviews} />
+        </div>
+        <div className="mt-3">
+          <span className="text-lg font-extrabold text-[#FF6B00]">{formatPrice(product.price)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────── You Might Like Section ─────── */
+function YouMightLikeSection() {
+  const [activeCategory, setActiveCategory] = useState('All');
+
+  const filtered = activeCategory === 'All'
+    ? products
+    : products.filter((p) => p.category === activeCategory);
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#0E172A]">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-[#1F398A] shadow-sm">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
-          {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="rounded-xl bg-[#F97315] p-2 shadow-md">
-              <Store className="h-5 w-5 text-white" />
-            </div>
+    <section id="products" className="mx-auto max-w-[1440px] px-8 pb-16 pt-10">
+      {/* Badge */}
+      <div className="mb-6 inline-flex items-center gap-2 rounded-md border border-[#FFE8D6] bg-[#FFF5ED] px-3 py-1.5 text-xs font-semibold text-[#FF6B00]">
+        <img src="/images/pin.png" alt="Pin" className="h-4 w-4 object-contain" />
+        <span>Picked for you based on recent views</span>
+      </div>
 
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">
-                OptiMall
-              </h1>
-              <p className="text-xs text-blue-100">
-                Optimizing every peso
-              </p>
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="hidden flex-1 md:block">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-              <input
-                type="text"
-                placeholder="Search products, bundles, stores..."
-                className="w-full rounded-xl border border-transparent bg-white py-3 pl-11 pr-4 text-sm shadow-sm outline-none transition focus:border-[#F97315]"
-              />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="ml-auto flex items-center gap-3">
-            <button className="rounded-xl p-2 text-white transition hover:bg-white/10">
-              <Bell className="h-5 w-5" />
-            </button>
-
-            <button className="rounded-xl p-2 text-white transition hover:bg-white/10">
-              <ShoppingCart className="h-5 w-5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                await signOut();
-                window.location.assign('/login');
-              }}
-              className="rounded-xl bg-[#F97315] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
-            >
-              Logout
-            </button>
+      <div className="flex items-center justify-between pb-4">
+        <div className="flex items-center gap-8">
+          <h2 className="text-xl font-extrabold text-gray-900">You Might Like</h2>
+          <div className="flex gap-2">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`rounded-lg px-4 py-1.5 text-[13px] font-bold transition-colors ${
+                  activeCategory === cat
+                    ? 'bg-[#1A2A54] text-white'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Mobile Search */}
-        <div className="px-4 pb-4 md:hidden">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-            <input
-              type="text"
-              placeholder="Search products..."
-              className="w-full rounded-xl bg-white py-3 pl-11 pr-4 text-sm outline-none"
-            />
-          </div>
+        {/* Navigation Arrows */}
+        <div className="flex gap-2">
+           <button className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+           </button>
+           <button className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+           </button>
         </div>
-      </header>
-
-      {/* Hero */}
-      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[2fr_1fr]">
-        {/* Main Banner */}
-        <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#1F398A] to-[#0E172A] p-8 text-white shadow-xl">
-          <div className="max-w-xl">
-            <span className="rounded-full bg-[#F97315]/20 px-4 py-1 text-xs font-semibold text-orange-200">
-              AI-Powered Shopping
-            </span>
-
-            <h2 className="mt-5 text-4xl font-black leading-tight">
-              Smarter shopping,
-              <br />
-              personalized for you.
-            </h2>
-
-            <p className="mt-4 text-sm leading-6 text-slate-300">
-              Discover optimized product bundles, personalized
-              recommendations, and AI-assisted shopping experiences.
-            </p>
-
-            <button className="mt-6 flex items-center gap-2 rounded-2xl bg-[#F97315] px-6 py-3 font-semibold text-white shadow-lg transition hover:scale-[1.02]">
-              Explore Now
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Side Cards */}
-        <div className="grid gap-6">
-          <div className="rounded-3xl bg-white p-6 shadow-md">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1F398A]/10">
-              <ShoppingCart className="h-6 w-6 text-[#1F398A]" />
-            </div>
-
-            <h3 className="font-bold text-[#0E172A]">
-              Smart Bundles
-            </h3>
-
-            <p className="mt-2 text-sm text-slate-500">
-              AI-generated product combinations based on your budget
-              and preferences.
-            </p>
-          </div>
-
-          <div className="rounded-3xl bg-[#F97315] p-6 text-white shadow-md">
-            <h3 className="text-lg font-bold">
-              Daily Deals
-            </h3>
-
-            <p className="mt-2 text-sm text-orange-100">
-              Limited-time recommendations curated for your interests.
-            </p>
-
-            <button className="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#F97315]">
-              View Deals
-            </button>
-          </div>
-        </div>
-      </section>
+      </div>
 
       {/* Product Grid */}
-      <section className="mx-auto max-w-7xl px-4 pb-10">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-[#0E172A]">
-            Recommended For You
-          </h2>
+      <div className="mt-4 grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-5">
+        {filtered.map((product) => (
+          <ProductCard key={product.id} product={product} />
+        ))}
+      </div>
+    </section>
+  );
+}
 
-          <button className="text-sm font-semibold text-[#1F398A] hover:underline">
-            View All
-          </button>
-        </div>
+/* ═══════════════ Main Page ═══════════════ */
+export default function HomePage() {
+  const [searchQuery, setSearchQuery] = useState('');
 
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-          {[1, 2, 3, 4, 5].map((item) => (
-            <div
-              key={item}
-              className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-            >
-              <div className="aspect-square bg-slate-100" />
-
-              <div className="p-4">
-                <p className="line-clamp-2 text-sm font-medium text-[#0E172A]">
-                  Product Name Example #{item}
-                </p>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-lg font-bold text-[#F97315]">
-                    ₱999
-                  </span>
-
-                  <button className="rounded-lg bg-[#1F398A] px-3 py-1 text-xs font-semibold text-white">
-                    Add
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+  return (
+    <div className="min-h-screen bg-[#F8F9FA] font-sans">
+      <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+      <SmartBundlesBanner />
+      <HotBundlesSection />
+      <YouMightLikeSection />
     </div>
   );
 }

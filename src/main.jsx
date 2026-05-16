@@ -9,6 +9,11 @@ import LandingPage from './pages/LandingPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
+import CartPage from './pages/CartPage';
+import DealsPage from './pages/DealsPage';
+import NewArrivalsPage from './pages/NewArrivalsPage';
+import BrandsPage from './pages/BrandsPage';
+import SmartBundlesPage from './pages/SmartBundlesPage';
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -25,7 +30,12 @@ function AppRouter() {
           <Route path="home" element={<HomePage />} />
           <Route path="login/*" element={<LoginPage />} />
           <Route path="signup/*" element={<SignupPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="cart" element={<CartPage />} />
+          <Route path="deals" element={<DealsPage />} />
+          <Route path="new-arrivals" element={<NewArrivalsPage />} />
+          <Route path="brands" element={<BrandsPage />} />
+          <Route path="smart-bundles" element={<SmartBundlesPage />} />
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
