@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import './styles.css';
 
 import AppLayout from './components/AppLayout';
+import LandingPage from './pages/LandingPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
@@ -20,11 +21,11 @@ function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<AppLayout />}>
-          <Route index element={<Navigate to="/home" replace />} />
+          <Route index element={<LandingPage />} />
           <Route path="home" element={<HomePage />} />
           <Route path="login/*" element={<LoginPage />} />
           <Route path="signup/*" element={<SignupPage />} />
-          <Route path="*" element={<Navigate to="/home" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
@@ -32,7 +33,13 @@ function AppRouter() {
 }
 
 createRoot(document.getElementById('root')).render(
-  <ClerkProvider publishableKey={clerkPubKey} signInUrl="/login" signUpUrl="/signup" afterSignInUrl="/home" afterSignUpUrl="/home">
+  <ClerkProvider
+    publishableKey={clerkPubKey}
+    signInUrl="/login"
+    signUpUrl="/signup"
+    signInFallbackRedirectUrl="/home"
+    signUpFallbackRedirectUrl="/home"
+  >
     <AppRouter />
   </ClerkProvider>
 );
