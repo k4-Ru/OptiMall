@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS products (
   rating DECIMAL(2,1),
   stock INT,
   tags JSON,
+  image_path VARCHAR(255) NULL,
   FOREIGN KEY (seller_id) REFERENCES sellers(id)
 );
 

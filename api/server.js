@@ -13,6 +13,37 @@ import {
 const app = express();
 app.use(express.json());
 
+async function ensureUserRecord(req, res, next) {
+  try {
+    if (!req.auth?.userId) {
+      return res.status(401).json({ error: 'Unauthorized: missing user context' });
+    }
+
+    const pool = getPool();
+    const claims = req.auth.claims || {};
+    const email = claims.email || claims.email_address || null;
+    const name = claims.name || [claims.first_name, claims.last_name].filter(Boolean).join(' ') || null;
+
+    await pool.query(
+      `INSERT INTO users (clerk_user_id, email, name)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         email = VALUES(email),
+         name = VALUES(name)`,
+      [req.auth.userId, email, name]
+    );
+
+    const [rows] = await pool.query('SELECT id FROM users WHERE clerk_user_id = ? LIMIT 1', [req.auth.userId]);
+    req.auth.dbUserId = rows?.[0]?.id || null;
+    return next();
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to sync user', details: error.message });
+  }
+}
+
+
+
+
 app.get('/api/products', async (_req, res) => {
   try {
     const pool = getPool();
@@ -23,7 +54,14 @@ app.get('/api/products', async (_req, res) => {
   }
 });
 
-app.post('/api/activity', requireClerkAuth, async (req, res) => {
+
+
+
+
+
+
+
+app.post('/api/activity', requireClerkAuth, ensureUserRecord, async (req, res) => {
   try {
     const {
       event_type,
@@ -41,7 +79,7 @@ app.post('/api/activity', requireClerkAuth, async (req, res) => {
     await pool.query(
       `INSERT INTO user_activity (user_id, clerk_user_id, event_type, product_id, category_id, search_query, weight_score)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [null, req.auth.userId, event_type, product_id, category_id, search_query, weight_score]
+      [req.auth.dbUserId, req.auth.userId, event_type, product_id, category_id, search_query, weight_score]
     );
 
     return res.status(201).json({ message: 'Activity logged' });
@@ -50,7 +88,7 @@ app.post('/api/activity', requireClerkAuth, async (req, res) => {
   }
 });
 
-app.post('/api/recommendations', requireClerkAuth, async (req, res) => {
+app.post('/api/recommendations', requireClerkAuth, ensureUserRecord, async (req, res) => {
   try {
     const { budget, preferences = [] } = req.body || {};
 
@@ -77,7 +115,9 @@ app.post('/api/recommendations', requireClerkAuth, async (req, res) => {
   }
 });
 
-app.post('/api/intelligence/promotions', requireClerkAuth, async (req, res) => {
+
+
+app.post('/api/intelligence/promotions', requireClerkAuth, ensureUserRecord, async (req, res) => {
   try {
     const result = await getPromotions(req.body || {});
     return res.status(200).json(result);
@@ -89,7 +129,12 @@ app.post('/api/intelligence/promotions', requireClerkAuth, async (req, res) => {
   }
 });
 
-app.post('/api/intelligence/realtime-recommendations', requireClerkAuth, async (req, res) => {
+
+
+
+
+
+app.post('/api/intelligence/realtime-recommendations', requireClerkAuth, ensureUserRecord, async (req, res) => {
   try {
     const result = await getRealtimeRecommendations(req.body || {});
     return res.status(200).json(result);
@@ -101,7 +146,11 @@ app.post('/api/intelligence/realtime-recommendations', requireClerkAuth, async (
   }
 });
 
-app.post('/api/intelligence/bundle-optimize', requireClerkAuth, async (req, res) => {
+
+
+
+
+app.post('/api/intelligence/bundle-optimize', requireClerkAuth, ensureUserRecord, async (req, res) => {
   try {
     const result = await getBundleOptimization(req.body || {});
     return res.status(200).json(result);
@@ -113,7 +162,12 @@ app.post('/api/intelligence/bundle-optimize', requireClerkAuth, async (req, res)
   }
 });
 
-app.post('/api/intelligence/anomaly-check', requireClerkAuth, async (req, res) => {
+
+
+
+
+
+app.post('/api/intelligence/anomaly-check', requireClerkAuth, ensureUserRecord, async (req, res) => {
   try {
     const result = await getAnomalyCheck(req.body || {});
     return res.status(200).json(result);
@@ -125,7 +179,13 @@ app.post('/api/intelligence/anomaly-check', requireClerkAuth, async (req, res) =
   }
 });
 
-app.post('/api/intelligence/pipeline', requireClerkAuth, async (req, res) => {
+
+
+
+
+
+
+app.post('/api/intelligence/pipeline', requireClerkAuth, ensureUserRecord, async (req, res) => {
   try {
     const result = await getIntelligencePipeline(req.body || {});
     return res.status(200).json(result);
@@ -136,6 +196,10 @@ app.post('/api/intelligence/pipeline', requireClerkAuth, async (req, res) => {
     });
   }
 });
+
+
+
+
 
 app.use('/api', (_req, res) => {
   return res.status(404).json({ error: 'Not found' });
