@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:python": "python3 -m unittest discover -s python-engine/tests -p \"test_*.py\" -v",
+    "test:smoke": "bash scripts/smoke_intelligence.sh"
   },
   "dependencies": {
     "@clerk/backend": "^1.24.4",

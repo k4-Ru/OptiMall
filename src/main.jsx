@@ -14,6 +14,14 @@ import DealsPage from './pages/DealsPage';
 import NewArrivalsPage from './pages/NewArrivalsPage';
 import BrandsPage from './pages/BrandsPage';
 import SmartBundlesPage from './pages/SmartBundlesPage';
+import ProductsPage from './pages/ProductsPage';
+import RecommendationsPage from './pages/RecommendationsPage';
+import ActivityPage from './pages/ActivityPage';
+import NotificationsPage from './pages/NotificationsPage';
+import AccountPage from './pages/AccountPage';
+import OrderTrackingPage from './pages/OrderTrackingPage';
+import ProductDetailPage from './pages/ProductDetailPage';
+import { CommerceProvider } from './lib/commerceContext';
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -35,7 +43,15 @@ function AppRouter() {
           <Route path="new-arrivals" element={<NewArrivalsPage />} />
           <Route path="brands" element={<BrandsPage />} />
           <Route path="smart-bundles" element={<SmartBundlesPage />} />
-          <Route path="*" element={<Navigate to="/home" replace />} />
+          <Route path="products" element={<ProductsPage />} />
+          <Route path="products/:id" element={<ProductDetailPage />} />
+          <Route path="recommendations" element={<RecommendationsPage />} />
+          <Route path="activity" element={<ActivityPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="account" element={<AccountPage />} />
+          <Route path="orders" element={<OrderTrackingPage />} />
+          <Route path="orders/:orderId" element={<OrderTrackingPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
@@ -43,13 +59,15 @@ function AppRouter() {
 }
 
 createRoot(document.getElementById('root')).render(
-  <ClerkProvider
-    publishableKey={clerkPubKey}
-    signInUrl="/login"
-    signUpUrl="/signup"
-    signInFallbackRedirectUrl="/home"
-    signUpFallbackRedirectUrl="/home"
-  >
-    <AppRouter />
-  </ClerkProvider>
+  <CommerceProvider>
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      signInUrl="/login"
+      signUpUrl="/signup"
+      signInFallbackRedirectUrl="/home"
+      signUpFallbackRedirectUrl="/home"
+    >
+      <AppRouter />
+    </ClerkProvider>
+  </CommerceProvider>
 );

@@ -1,5 +1,32 @@
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from .common import normalize_preferences, score_product_base
+
+
+def _event_recency_weight(event: Dict[str, Any]) -> float:
+    created_at = event.get("created_at")
+    if not created_at:
+        return 1.0
+
+    try:
+        iso_value = str(created_at).replace("Z", "+00:00")
+        ts = datetime.fromisoformat(iso_value)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age_hours = max((datetime.now(timezone.utc) - ts).total_seconds() / 3600.0, 0.0)
+    except Exception:
+        return 1.0
+
+    # Simple bucketed decay: newest interactions dominate ranking.
+    if age_hours <= 24:
+        return 1.0
+    if age_hours <= 72:
+        return 0.8
+    if age_hours <= 168:
+        return 0.6
+    if age_hours <= 720:
+        return 0.4
+    return 0.25
 
 
 def run_promotional_engine(products: List[Dict[str, Any]], preferences: List[str], activity_events: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -24,7 +51,8 @@ def run_promotional_engine(products: List[Dict[str, Any]], preferences: List[str
         elif event_type == "search":
             boost = 0.8
 
-        interaction_boost[product_id] = interaction_boost.get(product_id, 0.0) + boost
+        weighted_boost = boost * _event_recency_weight(event)
+        interaction_boost[product_id] = interaction_boost.get(product_id, 0.0) + weighted_boost
 
     scored = []
     for product in products:

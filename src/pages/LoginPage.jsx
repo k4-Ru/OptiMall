@@ -1,7 +1,14 @@
 import { SignIn } from '@clerk/clerk-react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 
 export default function LoginPage() {
+  const { isSignedIn } = useAuth();
+
+  if (isSignedIn) {
+    return <Navigate to="/home" replace />;
+  }
+
   return (
     <div className="flex min-h-screen bg-white font-sans">
       

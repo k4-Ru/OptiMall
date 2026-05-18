@@ -1,11 +1,11 @@
 # OptiMall Initial Setup
 
-Monorepo structure based on `OptiMall_Architecture.md`:
+Repo structure:
 
-- `frontend`: React UI (Vite + Tailwind + Clerk Auth)
-- `api/server.js`: Single Vercel serverless function using Express routes
+- `src/`: React UI (Vite + Tailwind + Clerk Auth)
+- `api/server.js`: Vercel serverless function using Express routes
 - `python-engine`: FastAPI intelligent service (Dockerized)
-- `db_stuff/schema.sql`: MySQL schema for XAMPP
+- `1db_stuff/schema.sql`: MySQL schema for XAMPP
 
 ## Architecture
 
@@ -26,7 +26,7 @@ Frontend (React) -> Vercel API Function (`api/server.js`) -> Python Engine (Fast
    ```
 3. Import schema:
    ```bash
-   mysql -u root -p optimall < db_stuff/schema.sql
+   mysql -u root -p optimall < 1db_stuff/schema.sql
    ```
 
 ## 2) Python Engine (Docker)
@@ -42,40 +42,35 @@ Health check:
 curl http://localhost:8000/health
 ```
 
-## 3) API Dependencies
+## 3) Install Dependencies
 
 ```bash
 npm install
-cp .env.example .env
 ```
 
-## 4) Frontend + Clerk
+## 4) Local Development (Frontend + API via Vercel)
+
+Run the app with Vercel local runtime so `/api/*` routes are available:
+
+```bash
+npx vercel dev
+```
+
+This serves the frontend and routes `/api/*` to `api/server.js`.
+
+## 5) Clerk Setup
 
 1. Create Clerk app in Clerk dashboard.
 2. Enable desired OAuth providers (Google, GitHub, etc.) in Clerk.
-3. Set frontend env:
-
-```bash
-cd frontend
-cp .env.example .env
-```
-
-4. Put your Clerk publishable key in `frontend/.env`:
+3. Put your Clerk publishable key in `.env`:
 
 ```env
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_xxx
 ```
 
-5. Install and run frontend:
+## 6) Env Vars
 
-```bash
-npm install
-npm run dev
-```
-
-## 5) Env Vars
-
-Set these in Vercel project settings:
+Set these in local `.env` (and Vercel project settings for deployment):
 
 - `DB_HOST`
 - `DB_PORT`

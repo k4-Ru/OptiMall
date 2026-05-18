@@ -20,6 +20,9 @@ class Product(BaseModel):
     rating: Optional[float] = 0.0
     stock: Optional[int] = 0
     tags: Optional[Any] = None
+    popularity_score: Optional[float] = 0.0
+    tag_vector: Optional[Any] = None
+    extra: Optional[Any] = None
 
 
 class ActivityEvent(BaseModel):
