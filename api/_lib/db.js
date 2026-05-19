@@ -3,6 +3,10 @@ import mysql from 'mysql2/promise';
 let pool;
 
 export function getPool() {
+  if (globalThis.__OPTIMALL_TEST_MOCK_POOL) {
+    return globalThis.__OPTIMALL_TEST_MOCK_POOL;
+  }
+
   if (!pool) {
     pool = mysql.createPool({
       host: process.env.DB_HOST,

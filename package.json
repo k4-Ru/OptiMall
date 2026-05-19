@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:fullstack": "bash scripts/dev_fullstack.sh",
     "build": "vite build",
     "preview": "vite preview",
+    "test:api": "node --test api/tests/*.test.js",
     "test:python": "python3 -m unittest discover -s python-engine/tests -p \"test_*.py\" -v",
     "test:smoke": "bash scripts/smoke_intelligence.sh"
   },

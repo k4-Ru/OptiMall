@@ -39,10 +39,12 @@ def score_product_base(product: Dict[str, Any], preferences: List[str]) -> float
     rating = float(product.get("rating") or 0)
     stock = int(product.get("stock") or 0)
     popularity_score = float(product.get("popularity_score") or 0)
+    outcome_boost = float(product.get("outcome_boost") or 0)
 
     if stock <= 0 or price <= 0:
         return 0.0
 
     price_factor = 1 / max(price, 1)
     popularity_bonus = min(max(popularity_score, 0), 100) * 0.03
-    return (rating * 1.5) + (price_factor * 30) + pref_bonus + popularity_bonus
+    learned_outcome_bonus = max(0.0, min(outcome_boost, 1.0)) * 2.2
+    return (rating * 1.5) + (price_factor * 30) + pref_bonus + popularity_bonus + learned_outcome_bonus

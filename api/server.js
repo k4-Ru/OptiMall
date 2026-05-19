@@ -24,6 +24,26 @@ app.use((req, res, next) => {
   next();
 });
 
+function logRouteError(route, req, error, extra = {}) {
+  console.error(JSON.stringify({
+    level: 'error',
+    route,
+    requestId: req.requestId,
+    errorType: error?.type || 'INTERNAL_ERROR',
+    message: error?.message || 'unknown error',
+    details: error?.details || error?.response?.data || null,
+    ...extra,
+  }));
+}
+
+function sendInternalError(res, req, message, errorType = 'INTERNAL_ERROR') {
+  return res.status(500).json({
+    error: message,
+    request_id: req.requestId,
+    error_type: errorType,
+  });
+}
+
 async function ensureUserRecord(req, res, next) {
   try {
     if (!req.auth?.userId) {
@@ -48,7 +68,8 @@ async function ensureUserRecord(req, res, next) {
     req.auth.dbUserId = rows?.[0]?.id || null;
     return next();
   } catch (error) {
-    return res.status(500).json({ error: 'Failed to sync user', details: error.message });
+    logRouteError('auth/ensureUserRecord', req, error);
+    return sendInternalError(res, req, 'Failed to sync user');
   }
 }
 
@@ -78,6 +99,96 @@ async function getRecentUserActivity(pool, dbUserId) {
   };
 }
 
+function buildOutcomeBoostMap(products, activityEvents) {
+  const productById = new Map(products.map((p) => [Number(p.id), p]));
+  const categorySignal = new Map();
+  const productSignal = new Map();
+  const eventWeights = {
+    view_product: 0.2,
+    click_product: 0.8,
+    add_to_cart: 1.8,
+    purchase: 3.0,
+    search: 0.3,
+  };
+
+  for (const event of activityEvents || []) {
+    const pid = Number(event?.product_id || 0);
+    const type = String(event?.event_type || '').toLowerCase();
+    const weight = eventWeights[type] ?? 0.1;
+    if (!pid) continue;
+
+    productSignal.set(pid, (productSignal.get(pid) || 0) + weight);
+
+    const category = String(productById.get(pid)?.category || '').toLowerCase();
+    if (category) {
+      categorySignal.set(category, (categorySignal.get(category) || 0) + weight);
+    }
+  }
+
+  let maxScore = 1;
+  for (const p of products) {
+    const pid = Number(p.id || 0);
+    const category = String(p.category || '').toLowerCase();
+    const score = (productSignal.get(pid) || 0) + (categorySignal.get(category) || 0) * 0.35;
+    maxScore = Math.max(maxScore, score);
+  }
+
+  const boosts = new Map();
+  for (const p of products) {
+    const pid = Number(p.id || 0);
+    const category = String(p.category || '').toLowerCase();
+    const score = (productSignal.get(pid) || 0) + (categorySignal.get(category) || 0) * 0.35;
+    boosts.set(pid, Number((score / maxScore).toFixed(4)));
+  }
+  return boosts;
+}
+
+function applyOutcomeBoost(products, activityEvents) {
+  const boosts = buildOutcomeBoostMap(products, activityEvents);
+  return products.map((product) => ({
+    ...product,
+    outcome_boost: boosts.get(Number(product.id)) || 0,
+  }));
+}
+
+async function refreshProductPopularityScore(pool, productId) {
+  const pid = Number(productId || 0);
+  if (!pid) return;
+
+  await pool.query(
+    `INSERT IGNORE INTO product_metadata (product_id, popularity_score, tag_vector, extra)
+     VALUES (?, 0, NULL, JSON_OBJECT('source', 'auto_refresh'))`,
+    [pid]
+  );
+
+  const [rows] = await pool.query(
+    `SELECT
+      COALESCE(SUM(
+        CASE LOWER(event_type)
+          WHEN 'view_product' THEN 0.4
+          WHEN 'click_product' THEN 1.0
+          WHEN 'add_to_cart' THEN 3.0
+          WHEN 'purchase' THEN 5.0
+          WHEN 'search' THEN 0.2
+          ELSE 0.1
+        END * COALESCE(weight_score, 1)
+      ), 0) AS weighted_score
+     FROM user_activity
+     WHERE product_id = ?`,
+    [pid]
+  );
+
+  const weightedScore = Number(rows?.[0]?.weighted_score || 0);
+  const popularityScore = Math.min(100, Number((5 + weightedScore).toFixed(2)));
+
+  await pool.query(
+    `UPDATE product_metadata
+     SET popularity_score = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE product_id = ?`,
+    [popularityScore, pid]
+  );
+}
+
 const PRODUCT_WITH_METADATA_SQL = `
   SELECT
     p.*,
@@ -90,13 +201,14 @@ const PRODUCT_WITH_METADATA_SQL = `
 
 
 
-app.get('/api/products', async (_req, res) => {
+app.get('/api/products', async (req, res) => {
   try {
     const pool = getPool();
     const [rows] = await pool.query(`${PRODUCT_WITH_METADATA_SQL} ORDER BY p.id DESC`);
     return res.status(200).json(rows);
   } catch (error) {
-    return res.status(500).json({ error: 'Failed to fetch products', details: error.message });
+    logRouteError('/api/products', req, error);
+    return sendInternalError(res, req, 'Failed to fetch products');
   }
 });
 
@@ -128,9 +240,14 @@ app.post('/api/activity', requireClerkAuth, ensureUserRecord, async (req, res) =
       [req.auth.dbUserId, req.auth.userId, event_type, product_id, category_id, search_query, weight_score]
     );
 
+    if (product_id) {
+      await refreshProductPopularityScore(pool, product_id);
+    }
+
     return res.status(201).json({ message: 'Activity logged' });
   } catch (error) {
-    return res.status(500).json({ error: 'Failed to log activity', details: error.message });
+    logRouteError('/api/activity', req, error);
+    return sendInternalError(res, req, 'Failed to log activity');
   }
 });
 
@@ -146,30 +263,20 @@ app.post('/api/recommendations', requireClerkAuth, ensureUserRecord, async (req,
     const [products] = await pool.query(`${PRODUCT_WITH_METADATA_SQL} WHERE p.stock > 0`);
     const { activityEvents, latestEvent } = await getRecentUserActivity(pool, req.auth.dbUserId);
 
+    const boostedProducts = applyOutcomeBoost(products, activityEvents);
     const recommendation = await getRecommendations({
       budget: Number(budget),
       preferences,
       user_id: req.auth.dbUserId,
-      products,
+      products: boostedProducts,
       activity_events: activityEvents,
       latest_event: latestEvent,
     }, { requestId: req.requestId });
 
     return res.status(200).json(recommendation);
   } catch (error) {
-    console.error(JSON.stringify({
-      level: 'error',
-      route: '/api/recommendations',
-      requestId: req.requestId,
-      errorType: error?.type || 'INTERNAL_ERROR',
-      message: error?.message || 'unknown error',
-    }));
-    return res.status(500).json({
-      error: 'Failed to get recommendations',
-      details: error.details || error.response?.data || error.message,
-      request_id: req.requestId,
-      error_type: error.type || 'INTERNAL_ERROR',
-    });
+    logRouteError('/api/recommendations', req, error);
+    return sendInternalError(res, req, 'Failed to get recommendations', error.type || 'INTERNAL_ERROR');
   }
 });
 
@@ -180,12 +287,8 @@ app.post('/api/intelligence/promotions', requireClerkAuth, ensureUserRecord, asy
     const result = await getPromotions(req.body || {}, { requestId: req.requestId });
     return res.status(200).json(result);
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to run promotional intelligence',
-      details: error.details || error.response?.data || error.message,
-      request_id: req.requestId,
-      error_type: error.type || 'INTERNAL_ERROR',
-    });
+    logRouteError('/api/intelligence/promotions', req, error);
+    return sendInternalError(res, req, 'Failed to run promotional intelligence', error.type || 'INTERNAL_ERROR');
   }
 });
 
@@ -199,12 +302,8 @@ app.post('/api/intelligence/realtime-recommendations', requireClerkAuth, ensureU
     const result = await getRealtimeRecommendations(req.body || {}, { requestId: req.requestId });
     return res.status(200).json(result);
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to run realtime recommendation',
-      details: error.details || error.response?.data || error.message,
-      request_id: req.requestId,
-      error_type: error.type || 'INTERNAL_ERROR',
-    });
+    logRouteError('/api/intelligence/realtime-recommendations', req, error);
+    return sendInternalError(res, req, 'Failed to run realtime recommendation', error.type || 'INTERNAL_ERROR');
   }
 });
 
@@ -217,12 +316,8 @@ app.post('/api/intelligence/bundle-optimize', requireClerkAuth, ensureUserRecord
     const result = await getBundleOptimization(req.body || {}, { requestId: req.requestId });
     return res.status(200).json(result);
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to run bundle optimization',
-      details: error.details || error.response?.data || error.message,
-      request_id: req.requestId,
-      error_type: error.type || 'INTERNAL_ERROR',
-    });
+    logRouteError('/api/intelligence/bundle-optimize', req, error);
+    return sendInternalError(res, req, 'Failed to run bundle optimization', error.type || 'INTERNAL_ERROR');
   }
 });
 
@@ -236,12 +331,8 @@ app.post('/api/intelligence/anomaly-check', requireClerkAuth, ensureUserRecord, 
     const result = await getAnomalyCheck(req.body || {}, { requestId: req.requestId });
     return res.status(200).json(result);
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to run anomaly detection',
-      details: error.details || error.response?.data || error.message,
-      request_id: req.requestId,
-      error_type: error.type || 'INTERNAL_ERROR',
-    });
+    logRouteError('/api/intelligence/anomaly-check', req, error);
+    return sendInternalError(res, req, 'Failed to run anomaly detection', error.type || 'INTERNAL_ERROR');
   }
 });
 
@@ -274,23 +365,13 @@ app.post('/api/intelligence/pipeline', requireClerkAuth, ensureUserRecord, async
       normalizedPayload.activity_events = activityEvents;
       normalizedPayload.latest_event = normalizedPayload.latest_event || latestEvent;
     }
+    normalizedPayload.products = applyOutcomeBoost(normalizedPayload.products, normalizedPayload.activity_events);
 
     const result = await getIntelligencePipeline(normalizedPayload, { requestId: req.requestId });
     return res.status(200).json(result);
   } catch (error) {
-    console.error(JSON.stringify({
-      level: 'error',
-      route: '/api/intelligence/pipeline',
-      requestId: req.requestId,
-      errorType: error?.type || 'INTERNAL_ERROR',
-      message: error?.message || 'unknown error',
-    }));
-    return res.status(500).json({
-      error: 'Failed to run intelligence pipeline',
-      details: error.details || error.response?.data || error.message,
-      request_id: req.requestId,
-      error_type: error.type || 'INTERNAL_ERROR',
-    });
+    logRouteError('/api/intelligence/pipeline', req, error);
+    return sendInternalError(res, req, 'Failed to run intelligence pipeline', error.type || 'INTERNAL_ERROR');
   }
 });
 

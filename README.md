@@ -5,7 +5,7 @@ Repo structure:
 - `src/`: React UI (Vite + Tailwind + Clerk Auth)
 - `api/server.js`: Vercel serverless function using Express routes
 - `python-engine`: FastAPI intelligent service (Dockerized)
-- `1db_stuff/schema.sql`: MySQL schema for XAMPP
+- `1db_stuff/OptiMall.sql`: MySQL schema for XAMPP
 
 ## Architecture
 
@@ -26,14 +26,14 @@ Frontend (React) -> Vercel API Function (`api/server.js`) -> Python Engine (Fast
    ```
 3. Import schema:
    ```bash
-   mysql -u root -p optimall < 1db_stuff/schema.sql
+   mysql -u root -p optimall < 1db_stuff/OptiMall.sql
    ```
 
 ## 2) Python Engine (Docker)
 
 ```bash
 cd python-engine
-docker compose up --build
+docker compose up --build -d
 ```
 
 Health check:
@@ -49,6 +49,14 @@ npm install
 ```
 
 ## 4) Local Development (Frontend + API via Vercel)
+
+Single command (starts Python engine + Vercel dev):
+
+```bash
+npm run dev:fullstack
+```
+
+Manual commands:
 
 Run the app with Vercel local runtime so `/api/*` routes are available:
 
@@ -85,3 +93,4 @@ Set these in local `.env` (and Vercel project settings for deployment):
 
 - `vercel.json` rewrites all `/api/*` requests to `api/server.js`.
 - Python container connects to host XAMPP MySQL using `host.docker.internal`.
+- API integration tests for pipeline route: `npm run test:api`.

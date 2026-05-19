@@ -31,6 +31,7 @@ export function normalizeProducts(products) {
       stock: toNumber(product?.stock, 0),
       tags: product?.tags ?? [],
       popularity_score: toNumber(product?.popularity_score, 0),
+      outcome_boost: toNumber(product?.outcome_boost, 0),
       tag_vector: product?.tag_vector ?? null,
       extra: product?.extra ?? null,
     }))

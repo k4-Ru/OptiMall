@@ -11,6 +11,18 @@ function getBearerToken(req) {
 
 export async function requireClerkAuth(req, res, next) {
   try {
+    if (process.env.OPTIMALL_TEST_BYPASS_AUTH === '1') {
+      req.auth = {
+        userId: req.headers['x-test-user-id'] || 'test-user',
+        sessionId: 'test-session',
+        claims: {
+          email: req.headers['x-test-email'] || 'test@example.com',
+          name: req.headers['x-test-name'] || 'Test User',
+        },
+      };
+      return next();
+    }
+
     const secretKey = process.env.CLERK_SECRET_KEY;
     if (!secretKey) {
       return res.status(500).json({ error: 'Missing CLERK_SECRET_KEY' });
