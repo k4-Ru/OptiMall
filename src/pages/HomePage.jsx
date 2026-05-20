@@ -43,6 +43,7 @@ export default function HomePage() {
   const [goal, setGoal] = useState('Study Setup');
   const [budget, setBudget] = useState(5000);
   const [bundleScenarios, setBundleScenarios] = useState([]);
+  const resolvedMode = mode === 'smart' ? 'smart' : 'normal';
 
   useEffect(() => {
     let mounted = true;
@@ -189,10 +190,10 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#eef2f6] pb-16">
-      <Header mode={mode} onModeChange={setMode} />
+      <Header mode={resolvedMode} onModeChange={setMode} />
 
       <main className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
-        {mode === 'normal' && (
+        {resolvedMode === 'normal' && (
           <NormalMode
             isSignedIn={isSignedIn}
             searchQuery={searchQuery}
@@ -211,7 +212,7 @@ export default function HomePage() {
           />
         )}
 
-        {mode === 'smart' && (
+        {resolvedMode === 'smart' && (
           <SmartMode
             dynamicGoals={dynamicGoals}
             goal={goal}
@@ -225,6 +226,12 @@ export default function HomePage() {
             bundleScenarios={bundleScenarios}
             addToCart={addToCart}
           />
+        )}
+
+        {mode !== 'normal' && mode !== 'smart' && (
+          <div className="rounded-xl border border-[#d5dded] bg-white p-4 text-sm text-slate-700">
+            Home view reset: unsupported mode detected. Showing normal browse mode.
+          </div>
         )}
 
         {!isSignedIn && (
