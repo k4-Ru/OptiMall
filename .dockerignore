@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.gitignore
+.vercel
+*.log
+.env
+.env.*
+python-engine/.venv

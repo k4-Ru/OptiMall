@@ -1,0 +1,37 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optimall-web
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-}
+      DB_NAME: ${DB_NAME:-optimall}
+      PYTHON_ENGINE_URL: http://python-engine:8000
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      PORT: 3000
+    depends_on:
+      - python-engine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  python-engine:
+    build:
+      context: ./python-engine
+      dockerfile: Dockerfile
+    container_name: optimall-python-engine
+    ports:
+      - "8000:8000"
+    environment:
+      MYSQL_HOST: host.docker.internal
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${DB_USER:-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-}
+      MYSQL_DATABASE: ${DB_NAME:-optimall}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
