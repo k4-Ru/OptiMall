@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Header from '../components/Header';
-import { getProducts, postIntelligencePipeline } from '../lib/api';
+import { getProductReviews, getProducts, getRelatedProducts, postIntelligencePipeline } from '../lib/api';
 import { useCommerce } from '../lib/commerceContext';
 
 function formatPrice(value) {
@@ -36,6 +36,8 @@ export default function ProductDetailPage() {
   const [loadingBundles, setLoadingBundles] = useState(false);
   const [error, setError] = useState('');
   const [bundleSets, setBundleSets] = useState([]);
+  const [relatedProducts, setRelatedProducts] = useState([]);
+  const [dbReviews, setDbReviews] = useState([]);
 
   useEffect(() => {
     let mounted = true;
@@ -92,6 +94,10 @@ export default function ProductDetailPage() {
 
     return scored.slice(0, 6).map((entry) => entry.candidate);
   }, [product, products, effectiveTags]);
+  const resolvedPairsWellWith = useMemo(
+    () => (relatedProducts.length ? relatedProducts : pairsWellWith),
+    [relatedProducts, pairsWellWith]
+  );
 
   const balancedTier = useMemo(
     () => bundleSets.find((tier) => tier.key === 'balanced') || bundleSets[0] || null,
@@ -102,12 +108,12 @@ export default function ProductDetailPage() {
     if (!balancedTier) return { remaining: 0, items: [] };
     const remaining = Math.max(0, Number(balancedTier.remaining || 0));
     const bundleIds = new Set((balancedTier.bundle || []).map((item) => Number(item.id)));
-    const items = pairsWellWith
+    const items = resolvedPairsWellWith
       .filter((item) => !bundleIds.has(Number(item.id)) && Number(item.price || 0) <= remaining)
       .sort((a, b) => Number(a.price || 0) - Number(b.price || 0))
       .slice(0, 4);
     return { remaining, items };
-  }, [balancedTier, pairsWellWith]);
+  }, [balancedTier, resolvedPairsWellWith]);
 
   const explanationLines = useMemo(() => {
     if (!product) return [];
@@ -167,6 +173,36 @@ export default function ProductDetailPage() {
       active = false;
     };
   }, [product, products, isSignedIn, getToken]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadRelatedAndReviews() {
+      if (!product?.id) {
+        setRelatedProducts([]);
+        setDbReviews([]);
+        return;
+      }
+      try {
+        const [related, reviews] = await Promise.all([
+          getRelatedProducts(product.id),
+          getProductReviews(product.id),
+        ]);
+        if (active) {
+          setRelatedProducts(Array.isArray(related) ? related : []);
+          setDbReviews(Array.isArray(reviews) ? reviews : []);
+        }
+      } catch {
+        if (active) {
+          setRelatedProducts([]);
+          setDbReviews([]);
+        }
+      }
+    }
+    loadRelatedAndReviews();
+    return () => {
+      active = false;
+    };
+  }, [product?.id]);
 
   return (
     <div className="min-h-screen bg-[#EDF1F6] font-sans pb-12">
@@ -269,7 +305,7 @@ export default function ProductDetailPage() {
               <h2 className="text-lg font-extrabold text-slate-900">Pairs Well With</h2>
               <p className="mt-1 text-sm text-slate-600">Complementary picks based on category, tags, and bundle compatibility.</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {pairsWellWith.map((item) => (
+                {resolvedPairsWellWith.map((item) => (
                   <article key={`pair-${item.id}`} className="rounded-xl border border-[#d5dded] bg-[#fcfdff] p-3">
                     <div className="flex items-center gap-3">
                       {item.image_path ? (
@@ -318,8 +354,17 @@ export default function ProductDetailPage() {
               <h2 className="text-lg font-extrabold text-slate-900">Reviews</h2>
               <p className="mt-1 text-sm text-slate-600">Rating: <span className="font-bold text-slate-900">{Number(product.rating || 0).toFixed(1)} / 5</span></p>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
-                <p className="rounded-lg bg-[#f8fbff] px-3 py-2">“Great value for the price and works well with setup bundles.”</p>
-                <p className="rounded-lg bg-[#f8fbff] px-3 py-2">“Delivery was fast and quality is solid for daily use.”</p>
+                {dbReviews.length > 0 ? dbReviews.slice(0, 6).map((review) => (
+                  <p key={`rv-${review.id}`} className="rounded-lg bg-[#f8fbff] px-3 py-2">
+                    “{review.review_text || 'User rated this product highly.'}”
+                    <span className="ml-2 text-xs font-semibold text-slate-500">— {review.reviewer_name || 'OptiMall User'}</span>
+                  </p>
+                )) : (
+                  <>
+                    <p className="rounded-lg bg-[#f8fbff] px-3 py-2">“Great value for the price and works well with setup bundles.”</p>
+                    <p className="rounded-lg bg-[#f8fbff] px-3 py-2">“Delivery was fast and quality is solid for daily use.”</p>
+                  </>
+                )}
               </div>
             </section>
           </>

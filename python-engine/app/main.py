@@ -19,6 +19,7 @@ class Product(BaseModel):
     price: float
     rating: Optional[float] = 0.0
     stock: Optional[int] = 0
+    image_path: Optional[str] = None
     tags: Optional[Any] = None
     popularity_score: Optional[float] = 0.0
     outcome_boost: Optional[float] = 0.0

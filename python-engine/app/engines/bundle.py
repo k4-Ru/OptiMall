@@ -44,6 +44,9 @@ def run_bundle_optimization(candidates: List[Dict[str, Any]], budget: float) -> 
                 "id": product.get("id"),
                 "name": product.get("name"),
                 "price": float(product.get("price")),
+                "category": product.get("category"),
+                "image_path": product.get("image_path"),
+                "stock": product.get("stock"),
                 "score": round(score, 3),
             })
 
@@ -70,6 +73,9 @@ def run_bundle_optimization(candidates: List[Dict[str, Any]], budget: float) -> 
                 "id": product.get("id"),
                 "name": product.get("name"),
                 "price": price,
+                "category": product.get("category"),
+                "image_path": product.get("image_path"),
+                "stock": product.get("stock"),
                 "score": round(score, 3)
             })
             total += price

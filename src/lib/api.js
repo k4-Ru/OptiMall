@@ -17,6 +17,14 @@ export function getProducts() {
   return request('/products');
 }
 
+export function getRelatedProducts(productId) {
+  return request(`/products/${productId}/related`);
+}
+
+export function getProductReviews(productId) {
+  return request(`/products/${productId}/reviews`);
+}
+
 export function postRecommendation(payload, token) {
   return request('/recommendations', {
     method: 'POST',
@@ -47,5 +55,16 @@ export function postIntelligencePipeline(payload, token) {
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(buildPipelinePayload(payload)),
+  });
+}
+
+export function postSaveBundle(payload, token) {
+  return request('/bundles/save', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
   });
 }

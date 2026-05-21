@@ -2,10 +2,10 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1
--- Generation Time: May 20, 2026 at 08:01 PM
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
+-- Host: localhost
+-- Generation Time: May 21, 2026 at 05:42 PM
+-- Server version: 10.4.28-MariaDB
+-- PHP Version: 8.2.4
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -20,6 +20,34 @@ SET time_zone = "+00:00";
 --
 -- Database: `optimall`
 --
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `bundles`
+--
+
+CREATE TABLE `bundles` (
+  `id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text DEFAULT NULL,
+  `bundle_type` enum('gaming','study','travel','fitness','creator','smart_home','kitchen') NOT NULL,
+  `estimated_total_price` decimal(10,2) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `bundle_items`
+--
+
+CREATE TABLE `bundle_items` (
+  `id` int(11) NOT NULL,
+  `bundle_id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `quantity` int(11) DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -48,6 +76,22 @@ CREATE TABLE `orders` (
   `status` varchar(32) NOT NULL DEFAULT 'pending',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `order_items`
+--
+
+CREATE TABLE `order_items` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `quantity` int(11) NOT NULL DEFAULT 1,
+  `unit_price` decimal(10,2) NOT NULL,
+  `subtotal` decimal(10,2) GENERATED ALWAYS AS (`quantity` * `unit_price`) STORED,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -89,7 +133,7 @@ INSERT INTO `products` (`id`, `seller_id`, `name`, `category`, `price`, `rating`
 (106, 2, 'USB-C Hub 7-in-1', 'Office & Productivity', 1899.00, 4.7, 45, '[\"usb-c\",\"hub\",\"adapter\"]', '/images/106.png'),
 (107, 2, 'Portable SSD 1TB', 'Office & Productivity', 4599.00, 4.8, 35, '[\"storage\",\"ssd\",\"backup\"]', '/images/107.png'),
 (108, 2, 'Blue Light Glasses', 'Study Essentials', 599.00, 4.4, 90, '[\"study\",\"eye-care\",\"productivity\"]', '/images/108.png'),
-(109, 2, 'Noise Cancelling Earbuds', 'Audio', 2599.00, 4.7, 55, '[\"audio\",\"study\",\"wireless\"]', '/images/earbuds_1778761100549.png'),
+(109, 2, 'Noise Cancelling Earbuds', 'Audio', 2599.00, 4.7, 55, '[\"audio\",\"study\",\"wireless\"]', '/images/earbuds.png'),
 (110, 2, 'Desk Organizer', 'Office & Productivity', 499.00, 4.5, 75, '[\"desk\",\"organization\",\"office\"]', '/images/110.png'),
 (111, 2, 'Smart Notebook', 'Study Essentials', 899.00, 4.5, 50, '[\"notes\",\"student\",\"study\"]', '/images/111.png'),
 (112, 2, 'Portable Desk Fan', 'Study Essentials', 699.00, 4.3, 65, '[\"desk\",\"cooling\",\"portable\"]', '/images/112.png'),
@@ -207,6 +251,20 @@ INSERT INTO `products` (`id`, `seller_id`, `name`, `category`, `price`, `rating`
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `product_embeddings`
+--
+
+CREATE TABLE `product_embeddings` (
+  `product_id` int(11) NOT NULL,
+  `embedding` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`embedding`)),
+  `embedding_model` varchar(100) DEFAULT 'text-embedding-3-small',
+  `embedding_dimension` int(11) DEFAULT 1536,
+  `generated_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `product_metadata`
 --
 
@@ -217,6 +275,57 @@ CREATE TABLE `product_metadata` (
   `tag_vector` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`tag_vector`)),
   `extra` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`extra`)),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `product_relationships`
+--
+
+CREATE TABLE `product_relationships` (
+  `id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `related_product_id` int(11) NOT NULL,
+  `relationship_type` enum('frequently_bought_together','accessory','replacement','premium_upgrade','budget_alternative','streaming_setup','gaming_setup','study_setup','travel_bundle','fitness_bundle','creator_bundle') NOT NULL,
+  `strength_score` decimal(3,2) DEFAULT 0.50,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `product_reviews`
+--
+
+CREATE TABLE `product_reviews` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `rating` int(11) NOT NULL CHECK (`rating` between 1 and 5),
+  `review_text` text DEFAULT NULL,
+  `sentiment_label` enum('positive','neutral','negative') DEFAULT 'neutral',
+  `sentiment_score` decimal(4,3) DEFAULT 0.000,
+  `helpful_count` int(11) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `recommendation_feedback`
+--
+
+CREATE TABLE `recommendation_feedback` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `recommended_product_id` int(11) NOT NULL,
+  `recommendation_source` enum('homepage','bundle_engine','similar_products','trending','ai_reranking','session_based') DEFAULT 'homepage',
+  `was_clicked` tinyint(1) DEFAULT 0,
+  `was_carted` tinyint(1) DEFAULT 0,
+  `was_purchased` tinyint(1) DEFAULT 0,
+  `feedback_score` int(11) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -234,6 +343,22 @@ CREATE TABLE `recommendation_logs` (
   `recommendation_payload` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`recommendation_payload`)),
   `model_name` varchar(100) DEFAULT NULL,
   `latency_ms` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `search_logs`
+--
+
+CREATE TABLE `search_logs` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `query_text` varchar(255) NOT NULL,
+  `results_count` int(11) DEFAULT 0,
+  `clicked_product_id` int(11) DEFAULT NULL,
+  `search_duration_ms` int(11) DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -617,11 +742,52 @@ INSERT INTO `user_activity` (`id`, `user_id`, `clerk_user_id`, `event_type`, `pr
 (295, 493, 'user_3Dz85hGzSig97OrI7Khcj5qw9uL', 'search', NULL, NULL, 'Study Setup @ 5000', 1, '2026-05-20 17:55:41'),
 (296, 493, 'user_3Dz85hGzSig97OrI7Khcj5qw9uL', 'search', NULL, NULL, 'Study Setup @ 5000', 1, '2026-05-20 17:55:41'),
 (297, 493, 'user_3Dz85hGzSig97OrI7Khcj5qw9uL', 'search', NULL, NULL, 'Study Setup @ 5000', 1, '2026-05-20 17:55:42'),
-(298, 493, 'user_3Dz85hGzSig97OrI7Khcj5qw9uL', 'search', NULL, NULL, 'Study Setup @ 5000', 1, '2026-05-20 17:55:42');
+(298, 493, 'user_3Dz85hGzSig97OrI7Khcj5qw9uL', 'search', NULL, NULL, 'Study Setup @ 5000', 1, '2026-05-20 17:55:42'),
+(299, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:50'),
+(300, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:50'),
+(301, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:51'),
+(302, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:51'),
+(303, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:51'),
+(304, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:52'),
+(305, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:52'),
+(306, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:53'),
+(307, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:53'),
+(308, 4, 'user_3DtpffhjkNZAkH3rQwRccYAfOCD', 'search', NULL, NULL, 'Study Setup @ 3800', 1, '2026-05-21 15:09:53');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_interactions`
+--
+
+CREATE TABLE `user_interactions` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `interaction_type` enum('viewed','clicked','carted','purchased','wishlisted','compared','shared','searched') NOT NULL,
+  `duration_seconds` int(11) DEFAULT 0,
+  `session_id` varchar(100) DEFAULT NULL,
+  `device_type` enum('mobile','desktop','tablet') DEFAULT 'mobile',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Indexes for dumped tables
 --
+
+--
+-- Indexes for table `bundles`
+--
+ALTER TABLE `bundles`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `bundle_items`
+--
+ALTER TABLE `bundle_items`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_bi_bundle` (`bundle_id`),
+  ADD KEY `idx_bi_product` (`product_id`);
 
 --
 -- Indexes for table `categories`
@@ -639,11 +805,25 @@ ALTER TABLE `orders`
   ADD KEY `idx_orders_clerk_user_id` (`clerk_user_id`);
 
 --
+-- Indexes for table `order_items`
+--
+ALTER TABLE `order_items`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_oi_order` (`order_id`),
+  ADD KEY `idx_oi_product` (`product_id`);
+
+--
 -- Indexes for table `products`
 --
 ALTER TABLE `products`
   ADD PRIMARY KEY (`id`),
   ADD KEY `seller_id` (`seller_id`);
+
+--
+-- Indexes for table `product_embeddings`
+--
+ALTER TABLE `product_embeddings`
+  ADD PRIMARY KEY (`product_id`);
 
 --
 -- Indexes for table `product_metadata`
@@ -653,6 +833,32 @@ ALTER TABLE `product_metadata`
   ADD UNIQUE KEY `uq_product_metadata_product_id` (`product_id`);
 
 --
+-- Indexes for table `product_relationships`
+--
+ALTER TABLE `product_relationships`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_pr_product` (`product_id`),
+  ADD KEY `idx_pr_related_product` (`related_product_id`),
+  ADD KEY `idx_pr_relationship_type` (`relationship_type`);
+
+--
+-- Indexes for table `product_reviews`
+--
+ALTER TABLE `product_reviews`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_prv_user` (`user_id`),
+  ADD KEY `idx_prv_product` (`product_id`),
+  ADD KEY `idx_prv_sentiment` (`sentiment_label`);
+
+--
+-- Indexes for table `recommendation_feedback`
+--
+ALTER TABLE `recommendation_feedback`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_rf_user` (`user_id`),
+  ADD KEY `idx_rf_product` (`recommended_product_id`);
+
+--
 -- Indexes for table `recommendation_logs`
 --
 ALTER TABLE `recommendation_logs`
@@ -660,6 +866,16 @@ ALTER TABLE `recommendation_logs`
   ADD KEY `idx_recommendation_logs_clerk_user_id` (`clerk_user_id`),
   ADD KEY `idx_recommendation_logs_user_id` (`user_id`),
   ADD KEY `idx_recommendation_logs_source_product_id` (`source_product_id`);
+
+--
+-- Indexes for table `search_logs`
+--
+ALTER TABLE `search_logs`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_sl_clicked_product` (`clicked_product_id`),
+  ADD KEY `idx_sl_user` (`user_id`),
+  ADD KEY `idx_sl_query` (`query_text`),
+  ADD KEY `idx_sl_created_at` (`created_at`);
 
 --
 -- Indexes for table `sellers`
@@ -684,8 +900,30 @@ ALTER TABLE `user_activity`
   ADD KEY `idx_user_activity_product_id` (`product_id`);
 
 --
+-- Indexes for table `user_interactions`
+--
+ALTER TABLE `user_interactions`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_ui_user` (`user_id`),
+  ADD KEY `idx_ui_product` (`product_id`),
+  ADD KEY `idx_ui_interaction_type` (`interaction_type`),
+  ADD KEY `idx_ui_created_at` (`created_at`);
+
+--
 -- AUTO_INCREMENT for dumped tables
 --
+
+--
+-- AUTO_INCREMENT for table `bundles`
+--
+ALTER TABLE `bundles`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `bundle_items`
+--
+ALTER TABLE `bundle_items`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `categories`
@@ -697,6 +935,12 @@ ALTER TABLE `categories`
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `order_items`
+--
+ALTER TABLE `order_items`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -712,9 +956,33 @@ ALTER TABLE `product_metadata`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `product_relationships`
+--
+ALTER TABLE `product_relationships`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `product_reviews`
+--
+ALTER TABLE `product_reviews`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `recommendation_feedback`
+--
+ALTER TABLE `recommendation_feedback`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `recommendation_logs`
 --
 ALTER TABLE `recommendation_logs`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `search_logs`
+--
+ALTER TABLE `search_logs`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -727,17 +995,30 @@ ALTER TABLE `sellers`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=905;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1021;
 
 --
 -- AUTO_INCREMENT for table `user_activity`
 --
 ALTER TABLE `user_activity`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=299;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=309;
+
+--
+-- AUTO_INCREMENT for table `user_interactions`
+--
+ALTER TABLE `user_interactions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- Constraints for dumped tables
 --
+
+--
+-- Constraints for table `bundle_items`
+--
+ALTER TABLE `bundle_items`
+  ADD CONSTRAINT `fk_bi_bundle` FOREIGN KEY (`bundle_id`) REFERENCES `bundles` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_bi_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `orders`
@@ -746,16 +1027,50 @@ ALTER TABLE `orders`
   ADD CONSTRAINT `fk_orders_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
 
 --
+-- Constraints for table `order_items`
+--
+ALTER TABLE `order_items`
+  ADD CONSTRAINT `fk_oi_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_oi_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE;
+
+--
 -- Constraints for table `products`
 --
 ALTER TABLE `products`
   ADD CONSTRAINT `products_ibfk_1` FOREIGN KEY (`seller_id`) REFERENCES `sellers` (`id`);
 
 --
+-- Constraints for table `product_embeddings`
+--
+ALTER TABLE `product_embeddings`
+  ADD CONSTRAINT `fk_pe_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE;
+
+--
 -- Constraints for table `product_metadata`
 --
 ALTER TABLE `product_metadata`
   ADD CONSTRAINT `fk_product_metadata_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`);
+
+--
+-- Constraints for table `product_relationships`
+--
+ALTER TABLE `product_relationships`
+  ADD CONSTRAINT `fk_pr_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_pr_related_product` FOREIGN KEY (`related_product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `product_reviews`
+--
+ALTER TABLE `product_reviews`
+  ADD CONSTRAINT `fk_prv_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_prv_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `recommendation_feedback`
+--
+ALTER TABLE `recommendation_feedback`
+  ADD CONSTRAINT `fk_rf_product` FOREIGN KEY (`recommended_product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_rf_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `recommendation_logs`
@@ -765,11 +1080,25 @@ ALTER TABLE `recommendation_logs`
   ADD CONSTRAINT `fk_recommendation_logs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
 
 --
+-- Constraints for table `search_logs`
+--
+ALTER TABLE `search_logs`
+  ADD CONSTRAINT `fk_sl_clicked_product` FOREIGN KEY (`clicked_product_id`) REFERENCES `products` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `fk_sl_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
 -- Constraints for table `user_activity`
 --
 ALTER TABLE `user_activity`
   ADD CONSTRAINT `fk_user_activity_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`),
   ADD CONSTRAINT `fk_user_activity_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
+
+--
+-- Constraints for table `user_interactions`
+--
+ALTER TABLE `user_interactions`
+  ADD CONSTRAINT `fk_ui_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_ui_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

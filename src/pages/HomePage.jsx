@@ -40,10 +40,14 @@ export default function HomePage() {
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [recommendationError, setRecommendationError] = useState('');
 
-  const [goal, setGoal] = useState('Study Setup');
+  const [goal, setGoal] = useState('');
   const [budget, setBudget] = useState(5000);
   const [bundleScenarios, setBundleScenarios] = useState([]);
   const resolvedMode = mode === 'smart' ? 'smart' : 'normal';
+  const userKey = user?.id || 'anon';
+  const SMART_CACHE_VERSION = 1;
+  const smartCacheStorageKey = `optimall_smart_flow_v${SMART_CACHE_VERSION}:${userKey}`;
+  const modeStorageKey = `optimall_home_mode:${userKey}`;
 
   useEffect(() => {
     let mounted = true;
@@ -62,6 +66,44 @@ export default function HomePage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(modeStorageKey);
+      if (raw === 'smart' || raw === 'normal') {
+        setMode(raw);
+      }
+    } catch {
+      // ignore storage issues
+    }
+  }, [modeStorageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(modeStorageKey, resolvedMode);
+    } catch {
+      // ignore storage issues
+    }
+  }, [modeStorageKey, resolvedMode]);
+
+  useEffect(() => {
+    setBundleScenarios([]);
+    setError('');
+  }, [userKey]);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    try {
+      const raw = localStorage.getItem(smartCacheStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.goal === 'string' && parsed.goal.trim()) setGoal(parsed.goal);
+      if (Number.isFinite(Number(parsed?.budget)) && Number(parsed.budget) > 0) setBudget(Number(parsed.budget));
+      if (Array.isArray(parsed?.bundleScenarios)) setBundleScenarios(parsed.bundleScenarios);
+    } catch {
+      // ignore invalid local cache
+    }
+  }, [isSignedIn, smartCacheStorageKey]);
 
   const dynamicGoals = useMemo(() => {
     const categoryGoals = [...new Set(products.map((p) => String(p.category || '').trim()).filter(Boolean))]
@@ -122,8 +164,11 @@ export default function HomePage() {
           token
         );
 
+        const hasActivityContext = Boolean(result?.meta?.has_activity_context);
         const suggestions = result?.realtime_recommendation?.suggestions || [];
-        const activityBased = suggestions.map((entry) => entry?.product).filter(Boolean).slice(0, 8);
+        const activityBased = hasActivityContext
+          ? suggestions.map((entry) => entry?.product).filter(Boolean).slice(0, 8)
+          : [];
         if (active) setActivityRecommendations(activityBased);
       } catch (err) {
         if (active) setRecommendationError(err.message || 'Could not load activity recommendations.');
@@ -188,6 +233,16 @@ export default function HomePage() {
     }
   }, [isSignedIn, getToken, goal, budget, filteredProducts]);
 
+  const resetSmartFlow = useCallback(() => {
+    setBundleScenarios([]);
+    setError('');
+  }, []);
+
+  const restoreSmartScenarios = useCallback((nextScenarios) => {
+    if (!Array.isArray(nextScenarios)) return;
+    setBundleScenarios(nextScenarios);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#eef2f6] pb-16">
       <Header mode={resolvedMode} onModeChange={setMode} />
@@ -203,6 +258,7 @@ export default function HomePage() {
             categories={categories}
             sortBy={sortBy}
             setSortBy={setSortBy}
+            hasActivityRecommendations={activityRecommendations.length > 0}
             loadingRecommendations={loadingRecommendations}
             recommendationError={recommendationError}
             recommendedProducts={recommendedProducts}
@@ -214,12 +270,16 @@ export default function HomePage() {
 
         {resolvedMode === 'smart' && (
           <SmartMode
+            userKey={userKey}
+            smartCacheStorageKey={smartCacheStorageKey}
             dynamicGoals={dynamicGoals}
             goal={goal}
             setGoal={setGoal}
             budget={budget}
             setBudget={setBudget}
             runSmartMode={runSmartMode}
+            resetSmartFlow={resetSmartFlow}
+            restoreSmartScenarios={restoreSmartScenarios}
             running={running}
             loadingProducts={loadingProducts}
             error={error}

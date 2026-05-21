@@ -17,6 +17,7 @@ CLAUDE.md
 .code-review-graph
 optimall_full_ui_layout_intelligent_shopping_assistant_v_2.md
 revamp_optimall.md
+.agents
 
 .vercel
 .env*.local

@@ -151,6 +151,27 @@ function applyOutcomeBoost(products, activityEvents) {
   }));
 }
 
+async function safeWriteRecommendationLog(pool, payload) {
+  try {
+    await pool.query(
+      `INSERT INTO recommendation_logs
+       (clerk_user_id, user_id, source_event_type, source_product_id, recommendation_payload, model_name, latency_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        payload.clerk_user_id || null,
+        payload.user_id || null,
+        payload.source_event_type || null,
+        payload.source_product_id || null,
+        JSON.stringify(payload.recommendation_payload || {}),
+        payload.model_name || null,
+        payload.latency_ms || null,
+      ]
+    );
+  } catch {
+    // non-blocking analytics write
+  }
+}
+
 async function refreshProductPopularityScore(pool, productId) {
   const pid = Number(productId || 0);
   if (!pid) return;
@@ -209,6 +230,27 @@ app.get('/api/products', async (req, res) => {
   } catch (error) {
     logRouteError('/api/products', req, error);
     return sendInternalError(res, req, 'Failed to fetch products');
+  }
+});
+
+app.get('/api/embeddings/status', async (req, res) => {
+  try {
+    const pool = getPool();
+    const [[products]] = await pool.query('SELECT COUNT(*) AS total_products FROM products');
+    const [[embeddings]] = await pool.query('SELECT COUNT(*) AS embedded_products FROM product_embeddings');
+    const totalProducts = Number(products?.total_products || 0);
+    const embeddedProducts = Number(embeddings?.embedded_products || 0);
+    const coverage = totalProducts ? Number(((embeddedProducts / totalProducts) * 100).toFixed(2)) : 0;
+
+    return res.status(200).json({
+      total_products: totalProducts,
+      embedded_products: embeddedProducts,
+      pending_products: Math.max(0, totalProducts - embeddedProducts),
+      coverage_percent: coverage,
+    });
+  } catch (error) {
+    logRouteError('/api/embeddings/status', req, error);
+    return sendInternalError(res, req, 'Failed to fetch embeddings status');
   }
 });
 
@@ -273,6 +315,15 @@ app.post('/api/recommendations', requireClerkAuth, ensureUserRecord, async (req,
       latest_event: latestEvent,
     }, { requestId: req.requestId });
 
+    await safeWriteRecommendationLog(pool, {
+      clerk_user_id: req.auth.userId,
+      user_id: req.auth.dbUserId,
+      source_event_type: latestEvent?.event_type || null,
+      source_product_id: latestEvent?.product_id || null,
+      recommendation_payload: recommendation,
+      model_name: 'recommendations_pipeline',
+      latency_ms: null,
+    });
     return res.status(200).json(recommendation);
   } catch (error) {
     logRouteError('/api/recommendations', req, error);
@@ -365,13 +416,153 @@ app.post('/api/intelligence/pipeline', requireClerkAuth, ensureUserRecord, async
       normalizedPayload.activity_events = activityEvents;
       normalizedPayload.latest_event = normalizedPayload.latest_event || latestEvent;
     }
+    const hasActivityContext = Array.isArray(normalizedPayload.activity_events) && normalizedPayload.activity_events.length > 0;
     normalizedPayload.products = applyOutcomeBoost(normalizedPayload.products, normalizedPayload.activity_events);
 
     const result = await getIntelligencePipeline(normalizedPayload, { requestId: req.requestId });
-    return res.status(200).json(result);
+    const responsePayload = {
+      ...result,
+      meta: {
+        ...(result?.meta || {}),
+        has_activity_context: hasActivityContext,
+      },
+    };
+
+    await safeWriteRecommendationLog(pool, {
+      clerk_user_id: req.auth.userId,
+      user_id: req.auth.dbUserId,
+      source_event_type: normalizedPayload?.latest_event?.event_type || null,
+      source_product_id: normalizedPayload?.latest_event?.product_id || null,
+      recommendation_payload: responsePayload,
+      model_name: 'intelligence_pipeline',
+      latency_ms: null,
+    });
+
+    return res.status(200).json(responsePayload);
   } catch (error) {
     logRouteError('/api/intelligence/pipeline', req, error);
     return sendInternalError(res, req, 'Failed to run intelligence pipeline', error.type || 'INTERNAL_ERROR');
+  }
+});
+
+app.get('/api/products/:id/related', async (req, res) => {
+  try {
+    const productId = Number(req.params.id || 0);
+    if (!productId) return res.status(400).json({ error: 'Invalid product id' });
+
+    const pool = getPool();
+    const [rows] = await pool.query(
+      `
+      SELECT
+        p.*,
+        pr.relationship_type,
+        pr.strength_score
+      FROM product_relationships pr
+      JOIN products p ON p.id = pr.related_product_id
+      WHERE pr.product_id = ?
+      ORDER BY pr.strength_score DESC, p.rating DESC
+      LIMIT 12
+      `,
+      [productId]
+    );
+    return res.status(200).json(rows);
+  } catch (error) {
+    logRouteError('/api/products/:id/related', req, error);
+    return sendInternalError(res, req, 'Failed to fetch related products');
+  }
+});
+
+app.get('/api/products/:id/reviews', async (req, res) => {
+  try {
+    const productId = Number(req.params.id || 0);
+    if (!productId) return res.status(400).json({ error: 'Invalid product id' });
+
+    const pool = getPool();
+    const [rows] = await pool.query(
+      `
+      SELECT
+        r.id,
+        r.product_id,
+        r.rating,
+        r.review_text,
+        r.sentiment_label,
+        r.sentiment_score,
+        r.helpful_count,
+        r.created_at,
+        COALESCE(NULLIF(u.name, ''), u.email, 'OptiMall User') AS reviewer_name
+      FROM product_reviews r
+      LEFT JOIN users u ON u.id = r.user_id
+      WHERE r.product_id = ?
+      ORDER BY r.created_at DESC
+      LIMIT 20
+      `,
+      [productId]
+    );
+    return res.status(200).json(rows);
+  } catch (error) {
+    logRouteError('/api/products/:id/reviews', req, error);
+    return sendInternalError(res, req, 'Failed to fetch product reviews');
+  }
+});
+
+app.post('/api/bundles/save', requireClerkAuth, ensureUserRecord, async (req, res) => {
+  try {
+    const {
+      name = 'Smart Bundle',
+      description = null,
+      bundle_type = 'study',
+      items = [],
+      estimated_total_price = 0,
+    } = req.body || {};
+
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: 'items must be a non-empty array' });
+    }
+
+    const allowedTypes = new Set(['gaming', 'study', 'travel', 'fitness', 'creator', 'smart_home', 'kitchen']);
+    const safeType = allowedTypes.has(String(bundle_type)) ? String(bundle_type) : 'study';
+    const safeName = String(name || 'Smart Bundle').slice(0, 255);
+    const safeDesc = description == null ? null : String(description);
+    const safeTotal = Number(estimated_total_price || 0);
+
+    const normalizedItems = items
+      .map((item) => ({
+        product_id: Number(item?.product_id || item?.id || 0),
+        quantity: Math.max(1, Number(item?.quantity || item?.qty || 1)),
+      }))
+      .filter((item) => item.product_id > 0);
+
+    if (!normalizedItems.length) {
+      return res.status(400).json({ error: 'No valid bundle items' });
+    }
+
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [insertBundle] = await conn.query(
+        `INSERT INTO bundles (name, description, bundle_type, estimated_total_price)
+         VALUES (?, ?, ?, ?)`,
+        [safeName, safeDesc, safeType, safeTotal]
+      );
+      const bundleId = Number(insertBundle?.insertId || 0);
+      for (const item of normalizedItems) {
+        await conn.query(
+          `INSERT INTO bundle_items (bundle_id, product_id, quantity) VALUES (?, ?, ?)`,
+          [bundleId, item.product_id, item.quantity]
+        );
+      }
+      await conn.commit();
+      return res.status(201).json({ id: bundleId, items_saved: normalizedItems.length });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    logRouteError('/api/bundles/save', req, error);
+    return sendInternalError(res, req, 'Failed to save bundle');
   }
 });
 
