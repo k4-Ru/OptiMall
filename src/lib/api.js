@@ -1,6 +1,6 @@
 import { buildPipelinePayload } from '../../shared/intelligenceContract.js';
 
-const API_BASE = '/api';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 const LAST_RECOMMENDATION_REQUEST_ID_KEY = 'optimall_last_recommendation_request_id';
 
 function createApiError(response, data) {

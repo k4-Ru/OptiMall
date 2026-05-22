@@ -3,7 +3,6 @@ import {
   CheckCircle,
   Compass,
   Cpu,
-  RefreshCw,
   ShieldCheck,
   ShoppingBag,
   Sparkles
@@ -11,34 +10,13 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-const DEMO_BUDGET = 1000;
-const demoCart = [
-  {
-    id: 151,
-    name: 'Student Planner Notebook',
-    category: 'Study Essentials',
-    price: 199,
-    image: '/images/151.png',
-  },
-  {
-    id: 152,
-    name: 'Desk Organizer Set',
-    category: 'Study Essentials',
-    price: 349,
-    image: '/images/152.png',
-  },
-  {
-    id: 158,
-    optimizedId: 155,
-    name: 'Laptop Sleeve 14 inch',
-    optimizedName: 'A4 Bond Paper Ream',
-    category: 'Study Essentials',
-    price: 499,
-    optimizedPrice: 289,
-    image: '/images/158.png',
-    optimizedImage: '/images/155.png',
-    note: 'Smart Swap',
-  },
+const DEMO_QUERY = 'for student';
+const DEMO_PRIORITY = 'Best overall value';
+const DEMO_BUDGET_PREF = 'Balanced Spend';
+const demoTiers = [
+  { key: 'starter', label: 'Starter Tier', budget: 1200, bundle: 942.37, remaining: 257.63, discount: 14, items: ['Student Planner Notebook', 'Mini Desk Fan USB', 'Insulated Water Bottle'] },
+  { key: 'balanced', label: 'Balanced Tier', budget: 2000, bundle: 1376.87, remaining: 623.13, discount: 14, items: ['Student Planner Notebook', 'Mini Desk Fan USB', 'Insulated Water Bottle', 'Desk Organizer'] },
+  { key: 'max', label: 'Max Value Tier', budget: 3000, bundle: 2293.19, remaining: 706.81, discount: 15, items: ['Student Planner Notebook', 'Mini Desk Fan USB', 'Insulated Water Bottle', 'Desk Organizer', 'A4 Bond Paper Ream'] },
 ];
 
 function formatPrice(value) {
@@ -46,28 +24,15 @@ function formatPrice(value) {
 }
 
 export default function LandingPage() {
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const [isOptimized, setIsOptimized] = useState(false);
-  const cartTotal = demoCart.reduce((sum, item) => sum + Number(item.price || 0), 0);
-  const optimizedTotal = demoCart.reduce(
-    (sum, item) => sum + Number(isOptimized ? item.optimizedPrice || item.price : item.price),
-    0
-  );
-  const activeTotal = isOptimized ? optimizedTotal : cartTotal;
-  const savedAmount = cartTotal - optimizedTotal;
-  const overBudget = Math.max(0, activeTotal - DEMO_BUDGET);
-  const progress = Math.min(100, (activeTotal / DEMO_BUDGET) * 100);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGenerated, setIsGenerated] = useState(false);
 
-  const handleOptimize = () => {
-    setIsOptimizing(true);
+  const handleGenerate = () => {
+    setIsGenerating(true);
     setTimeout(() => {
-      setIsOptimizing(false);
-      setIsOptimized(true);
+      setIsGenerating(false);
+      setIsGenerated(true);
     }, 1000);
-  };
-
-  const handleReset = () => {
-    setIsOptimized(false);
   };
 
   return (
@@ -126,8 +91,8 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Interactive Cart Sandbox Mockup */}
-        <div className="opti-slide-up opti-stagger-1 relative z-10 mx-auto w-full max-w-[480px]">
+          {/* Smart Mode Workspace Mockup */}
+          <div className="opti-slide-up opti-stagger-1 relative z-10 mx-auto w-full max-w-[480px]">
           {/* Decorative blur backdrop */}
           <div className="absolute -inset-1 rounded-3xl bg-gradient-to-tr from-[#1A2A54]/10 to-[#FF6B00]/10 opacity-30 blur-lg" />
 
@@ -140,113 +105,80 @@ export default function LandingPage() {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-sm">Demo Workspace</h3>
-                  <p className="text-[11px] text-slate-500 font-medium">Smart Optimizer Sandbox</p>
+                  <p className="text-[11px] text-slate-500 font-medium">Smart Mode Flow Preview</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5 rounded-full bg-[#f1f5f9] px-2.5 py-1">
-                <span className="text-[10px] font-bold text-slate-600">Budget:</span>
-                <span className="text-[11px] font-black text-[#1A2A54]">{formatPrice(DEMO_BUDGET)}</span>
+                <span className="text-[10px] font-bold text-slate-600">Mode:</span>
+                <span className="text-[11px] font-black text-[#1A2A54]">Smart</span>
               </div>
             </div>
 
-            {/* Cart Items List */}
             <div className="mt-5 space-y-3.5">
-              {demoCart.map((item) => {
-                const wasSwapped = isOptimized && item.optimizedPrice;
-                const name = wasSwapped ? item.optimizedName : item.name;
-                const image = wasSwapped ? item.optimizedImage : item.image;
-                const price = wasSwapped ? item.optimizedPrice : item.price;
-
-                return (
-                  <div key={wasSwapped ? item.optimizedId : item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-[#f8fafc] p-3 transition-all duration-300">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <img
-                        src={image}
-                        alt={name}
-                        className="h-12 w-12 shrink-0 rounded-lg border border-slate-200 bg-white object-contain p-1"
-                      />
-                      <div className="min-w-0">
-                        <h4 className="truncate text-xs font-bold text-slate-800">{name}</h4>
-                        <p className="truncate text-[10px] font-medium text-slate-400">{item.category}</p>
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      {wasSwapped ? (
-                        <>
-                          <span className="mr-1.5 text-[10px] font-bold text-slate-400 line-through">{formatPrice(item.price)}</span>
-                          <span className="text-xs font-extrabold text-[#FF6B00]">{formatPrice(price)}</span>
-                          <span className="block text-[8px] font-bold text-emerald-600">{item.note}</span>
-                        </>
-                      ) : (
-                        <span className="text-xs font-bold text-slate-700">{formatPrice(price)}</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Budget Progress Bar */}
-            <div className="mt-5 border-t border-slate-100 pt-4">
-              <div className="flex justify-between text-xs font-bold text-slate-700 mb-1.5">
-                <span>Cart Total</span>
-                <span className={isOptimized ? 'text-emerald-600' : 'text-[#FF6B00]'}>
-                  {formatPrice(activeTotal)}
-                </span>
+              <div className="rounded-xl border border-slate-100 bg-[#f8fafc] p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Step 1</p>
+                <p className="mt-1 text-xs font-bold text-slate-800">What are you looking for?</p>
+                <p className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">{DEMO_QUERY}</p>
               </div>
-
-              <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className={`h-full transition-all duration-500 ease-out ${isOptimized ? 'bg-emerald-500' : 'bg-[#FF6B00]'
-                    }`}
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-
-              {/* Alert Status Banner */}
-              <div className="mt-3.5 flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-all duration-300 bg-[#fafafa]">
-                {isOptimized ? (
-                  <div className="flex items-center gap-2 text-emerald-700">
-                    <CheckCircle className="h-4 w-4" />
-                    <span>Success! Saved {formatPrice(savedAmount)} ({Math.round(progress)}% of Budget)</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-[#FF6B00]">
-                    <span className="flex h-2 w-2 rounded-full bg-[#FF6B00] animate-ping" />
-                    <span>Cart exceeds budget by {formatPrice(overBudget)}</span>
-                  </div>
-                )}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-slate-100 bg-[#f8fafc] p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Step 2</p>
+                  <p className="mt-1 text-xs font-bold text-slate-800">{DEMO_PRIORITY}</p>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-[#f8fafc] p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Step 3</p>
+                  <p className="mt-1 text-xs font-bold text-slate-800">{DEMO_BUDGET_PREF}</p>
+                </div>
               </div>
             </div>
 
-            {/* Simulation Action Button */}
+            {isGenerated && (
+              <div className="mt-5 border-t border-slate-100 pt-4 space-y-2">
+                {demoTiers.map((tier) => (
+                  <div key={tier.key} className="rounded-xl border border-slate-100 bg-[#f8fafc] p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-extrabold text-[#1A2A54]">{tier.label}</p>
+                      <p className="text-[11px] font-bold text-slate-600">Disc {tier.discount}%</p>
+                    </div>
+                    <p className="mt-1 text-[11px] font-semibold text-slate-600">
+                      Budget {formatPrice(tier.budget)} • Bundle {formatPrice(tier.bundle)} • Left {formatPrice(tier.remaining)}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-700 truncate">{tier.items.slice(0, 3).join(', ')}</p>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 text-emerald-700 text-xs font-bold">
+                  <CheckCircle className="h-4 w-4" />
+                  <span>Smart bundles generated across budget tiers</span>
+                </div>
+              </div>
+            )}
+
             <div className="mt-5">
-              {isOptimized ? (
+              {isGenerated ? (
                 <button
                   type="button"
-                  onClick={handleReset}
+                  onClick={() => setIsGenerated(false)}
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#cbd8ee] bg-white py-3 text-xs font-extrabold uppercase tracking-wider text-slate-700 transition duration-150 hover:bg-[#f4f7fc]"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 text-[#1A2A54]" />
-                  Reset Simulation
+                  Reset Preview
                 </button>
               ) : (
                 <button
                   type="button"
-                  onClick={handleOptimize}
-                  disabled={isOptimizing}
+                  onClick={handleGenerate}
+                  disabled={isGenerating}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1A2A54] py-3 text-xs font-extrabold uppercase tracking-wider text-white transition-all duration-150 active:scale-[0.98] hover:bg-[#2A3A6A] disabled:opacity-80"
                 >
-                  {isOptimizing ? (
+                  {isGenerating ? (
                     <>
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      Optimizing Carts...
+                      <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                      Generating Bundles...
                     </>
                   ) : (
                     <>
                       <Sparkles className="h-3.5 w-3.5 text-[#FF6B00]" />
-                      Run Smart Optimizer
+                      Run Smart Mode
                     </>
                   )}
                 </button>

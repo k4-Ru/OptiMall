@@ -15,6 +15,23 @@ import { validatePipelinePayload } from '../shared/intelligenceContract.js';
 
 const app = express();
 app.use(express.json());
+const ALLOWED_ORIGINS = String(process.env.API_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin) return next();
+  if (!ALLOWED_ORIGINS.length || ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+  }
+  return next();
+});
 app.use((req, res, next) => {
   const incomingRequestId = req.headers['x-request-id'];
   const requestId = typeof incomingRequestId === 'string' && incomingRequestId
