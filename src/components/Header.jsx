@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { useCommerce } from '../lib/commerceContext';
+import { fetchAuthAccess } from '../lib/authApi';
 
 export default function Header({ mode, onModeChange }) {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -24,9 +25,7 @@ export default function Header({ mode, onModeChange }) {
           if (active) setIsAdmin(false);
           return;
         }
-        const response = await fetch('/api/auth/access', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await fetchAuthAccess(token);
         const data = await response.json().catch(() => ({}));
         if (active) setIsAdmin(Boolean(data?.is_admin || String(data?.role || '').toLowerCase() === 'admin'));
       } catch {

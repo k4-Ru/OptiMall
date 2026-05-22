@@ -17,6 +17,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useCommerce } from '../lib/commerceContext';
 import { useAuth } from '@clerk/clerk-react';
+import { fetchAuthAccess } from '../lib/authApi';
 
 function formatPrice(value) {
   return `₱${Number(value || 0).toLocaleString()}`;
@@ -58,9 +59,7 @@ export default function AccountPage() {
           if (active) setIsAdmin(false);
           return;
         }
-        const response = await fetch('/api/auth/access', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await fetchAuthAccess(token);
         const data = await response.json().catch(() => ({}));
         if (active) setIsAdmin(Boolean(data?.is_admin || String(data?.role || '').toLowerCase() === 'admin'));
       } catch {

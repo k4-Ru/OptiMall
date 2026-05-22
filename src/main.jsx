@@ -26,6 +26,7 @@ import OrderTrackingPage from './pages/OrderTrackingPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import AdminPage from './pages/AdminPage';
 import { CommerceProvider } from './lib/commerceContext';
+import { fetchAuthAccess } from './lib/authApi';
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -54,11 +55,7 @@ function RequireAuth({ children }) {
           if (active) setCheckedAccess(true);
           return;
         }
-        const response = await fetch('/api/auth/access', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const response = await fetchAuthAccess(token);
         if (response.status === 403) {
           const data = await response.json().catch(() => ({}));
           if (data?.error_type === 'SUSPICIOUS_USER_BLOCKED') {
@@ -119,9 +116,7 @@ function RequireAdmin({ children }) {
           if (active) setChecking(false);
           return;
         }
-        const response = await fetch('/api/auth/access', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await fetchAuthAccess(token);
         const data = await response.json().catch(() => ({}));
         if (active) setIsAdmin(Boolean(data?.is_admin || String(data?.role || '').toLowerCase() === 'admin'));
       } catch {
@@ -158,9 +153,7 @@ function RequireNonAdmin({ children }) {
           if (active) setChecking(false);
           return;
         }
-        const response = await fetch('/api/auth/access', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await fetchAuthAccess(token);
         const data = await response.json().catch(() => ({}));
         if (active) setIsAdmin(Boolean(data?.is_admin || String(data?.role || '').toLowerCase() === 'admin'));
       } catch {
