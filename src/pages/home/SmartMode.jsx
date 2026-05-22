@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
+import { postSaveBundle } from '../../lib/api';
 
 function formatPrice(value) {
   return `₱${Number(value || 0).toLocaleString()}`;
@@ -12,43 +14,92 @@ const BUDGET_PREFERENCES = [
 ];
 
 export default function SmartMode({
+  userKey,
+  smartCacheStorageKey,
   dynamicGoals,
   goal,
   setGoal,
   budget,
   setBudget,
   runSmartMode,
+  resetSmartFlow,
+  restoreSmartScenarios,
   running,
   loadingProducts,
   error,
   bundleScenarios,
-  addToCart,
+  addBundleToCart,
 }) {
   const navigate = useNavigate();
+  const { isSignedIn, getToken } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [goalInput, setGoalInput] = useState(goal || '');
+  const [goalInputTouched, setGoalInputTouched] = useState(false);
   const [budgetPreference, setBudgetPreference] = useState('');
   const [selectedScenarioKey, setSelectedScenarioKey] = useState('');
   const [customizedBundle, setCustomizedBundle] = useState([]);
 
   const showResult = bundleScenarios.length > 0;
 
+  useEffect(() => {
+    if (!smartCacheStorageKey) return;
+    try {
+      const raw = localStorage.getItem(smartCacheStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.goalInput === 'string') setGoalInput(parsed.goalInput);
+      if (typeof parsed?.goalInputTouched === 'boolean') setGoalInputTouched(parsed.goalInputTouched);
+      if (Number.isFinite(Number(parsed?.currentStep))) setCurrentStep(Math.max(1, Math.min(2, Number(parsed.currentStep))));
+      if (typeof parsed?.budgetPreference === 'string') setBudgetPreference(parsed.budgetPreference);
+      if (typeof parsed?.selectedScenarioKey === 'string') setSelectedScenarioKey(parsed.selectedScenarioKey);
+      if (Array.isArray(parsed?.customizedBundle)) setCustomizedBundle(parsed.customizedBundle);
+      if (Array.isArray(parsed?.bundleScenarios)) restoreSmartScenarios?.(parsed.bundleScenarios);
+      if (typeof parsed?.goal === 'string' && parsed.goal.trim()) setGoal(parsed.goal);
+      if (Number.isFinite(Number(parsed?.budget)) && Number(parsed.budget) > 0) setBudget(Number(parsed.budget));
+    } catch {
+      // ignore invalid local cache
+    }
+  }, [smartCacheStorageKey, restoreSmartScenarios, setGoal, setBudget, userKey]);
+
+  useEffect(() => {
+    if (!smartCacheStorageKey) return;
+    try {
+      localStorage.setItem(
+        smartCacheStorageKey,
+        JSON.stringify({
+          goal,
+          budget,
+          goalInput,
+          goalInputTouched,
+          currentStep,
+          budgetPreference,
+          selectedScenarioKey,
+          customizedBundle,
+          bundleScenarios,
+          savedAt: Date.now(),
+        })
+      );
+    } catch {
+      // ignore storage write issues
+    }
+  }, [
+    smartCacheStorageKey,
+    goal,
+    budget,
+    goalInput,
+    goalInputTouched,
+    currentStep,
+    budgetPreference,
+    selectedScenarioKey,
+    customizedBundle,
+    bundleScenarios,
+  ]);
+
   const filteredGoals = useMemo(() => {
     const key = goalInput.trim().toLowerCase();
     if (!key) return dynamicGoals.slice(0, 8);
     return dynamicGoals.filter((g) => g.toLowerCase().includes(key)).slice(0, 8);
   }, [dynamicGoals, goalInput]);
-
-  useEffect(() => {
-    if (currentStep !== 1 || showResult) return;
-    const normalized = goalInput.trim();
-    if (normalized.length < 3) return;
-    const timeoutId = setTimeout(() => {
-      setGoal(normalized);
-      setCurrentStep(2);
-    }, 450);
-    return () => clearTimeout(timeoutId);
-  }, [goalInput, currentStep, showResult, setGoal, setCurrentStep]);
 
   useEffect(() => {
     if (currentStep !== 2 || !budgetPreference || running || loadingProducts) return;
@@ -128,16 +179,64 @@ export default function SmartMode({
     setCustomizedBundle((prev) => prev.filter((item) => item.id !== id));
   }
 
-  function handleCheckout() {
-    customizedBundle.forEach((item) => {
-      addToCart(item, Number(item.qty || 1));
+  function continueFromStepOne() {
+    const normalized = goalInput.trim();
+    if (normalized.length < 3) return;
+    setGoalInputTouched(true);
+    setGoal(normalized);
+    setCurrentStep(2);
+  }
+
+  async function handleCheckout() {
+    const bundleName = `${goal || 'Smart'} - ${selectedScenario?.label || 'Bundle'}`;
+    addBundleToCart(customizedBundle, {
+      name: bundleName,
+      total: customizedTotals.total,
+      scenarioKey: selectedScenario?.key || null,
     });
+    if (isSignedIn && selectedScenario && customizedBundle.length) {
+      try {
+        const token = await getToken();
+        if (token) {
+          const preferredType = String(goal || '').toLowerCase();
+          const bundleType = preferredType.includes('gaming')
+            ? 'gaming'
+            : preferredType.includes('travel')
+              ? 'travel'
+              : preferredType.includes('fitness')
+                ? 'fitness'
+                : preferredType.includes('creator')
+                  ? 'creator'
+                  : preferredType.includes('smart')
+                    ? 'smart_home'
+                    : preferredType.includes('kitchen')
+                      ? 'kitchen'
+                      : 'study';
+
+          await postSaveBundle(
+            {
+              name: `${goal || 'Smart'} - ${selectedScenario.label} Bundle`,
+              description: `Saved from Smart mode checkout (${selectedScenario.key}).`,
+              bundle_type: bundleType,
+              estimated_total_price: customizedTotals.total,
+              items: customizedBundle.map((item) => ({
+                product_id: item.id,
+                quantity: Number(item.qty || 1),
+              })),
+            },
+            token
+          );
+        }
+      } catch {
+        // non-blocking save
+      }
+    }
     navigate('/cart');
   }
 
   return (
     <section className="opti-slide-up rounded-2xl border border-[#d5dded] bg-white p-6">
-      <h1 className="text-2xl font-extrabold text-slate-900">Smart mode: Step flow</h1>
+      <h1 className="text-2xl font-extrabold text-slate-900">Smart mode</h1>
       <p className="mt-1 text-sm text-slate-600">Type goal, choose budget preference, then compare generated bundles before checkout.</p>
 
       {!showResult && (
@@ -150,7 +249,7 @@ export default function SmartMode({
         </div>
       )}
 
-      <div className="mt-5 rounded-xl border border-[#d5dded] bg-[#f8fbff] p-4">
+      <div className="opti-enter-soft mt-5 rounded-xl border border-[#d5dded] bg-[#f8fbff] p-4">
         {!showResult && currentStep === 1 && (
           <div className="opti-slide-up">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Step 1 • What is this for?</p>
@@ -158,9 +257,18 @@ export default function SmartMode({
             <input
               type="text"
               value={goalInput}
-              onChange={(e) => setGoalInput(e.target.value)}
+              onChange={(e) => {
+                setGoalInputTouched(true);
+                setGoalInput(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  continueFromStepOne();
+                }
+              }}
               placeholder="Example: Study Setup"
-              className="mt-3 w-full rounded-xl border border-[#d5dded] bg-white px-4 py-3 text-sm"
+              className="opti-focus-ring mt-3 w-full rounded-xl border border-[#d5dded] bg-white px-4 py-3 text-sm transition-all duration-200 focus:border-[#aebdd9]"
             />
             <div className="mt-3 flex flex-wrap gap-2">
               {filteredGoals.map((g) => (
@@ -168,11 +276,12 @@ export default function SmartMode({
                   key={g}
                   type="button"
                   onClick={() => {
+                    setGoalInputTouched(true);
                     setGoalInput(g);
                     setGoal(g);
                     setCurrentStep(2);
                   }}
-                  className="rounded-full bg-[#edf3fb] px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-[#dbe8fa]"
+                  className="opti-press rounded-full bg-[#edf3fb] px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-[#dbe8fa]"
                 >
                   {g}
                 </button>
@@ -191,7 +300,7 @@ export default function SmartMode({
                   key={pref.key}
                   type="button"
                   onClick={() => setBudgetPreference(pref.key)}
-                  className={`rounded-xl border px-3 py-3 text-left text-sm font-bold ${budgetPreference === pref.key ? 'border-[#1A2A54] bg-[#1A2A54] text-white' : 'border-[#d5dded] bg-white text-slate-700'}`}
+                  className={`opti-press rounded-xl border px-3 py-3 text-left text-sm font-bold ${budgetPreference === pref.key ? 'border-[#1A2A54] bg-[#1A2A54] text-white' : 'border-[#d5dded] bg-white text-slate-700'}`}
                 >
                   {pref.label}
                 </button>
@@ -215,9 +324,10 @@ export default function SmartMode({
             type="button"
             onClick={() => {
               setCurrentStep(1);
+              setGoalInputTouched(false);
               setBudgetPreference('');
             }}
-            className="rounded-lg border border-[#d5dded] bg-white px-4 py-2 text-sm font-bold text-slate-700"
+            className="opti-press rounded-lg border border-[#d5dded] bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-[#f8fbff]"
           >
             Back
           </button>
@@ -234,7 +344,7 @@ export default function SmartMode({
                 key={scenario.key}
                 type="button"
                 onClick={() => setSelectedScenarioKey(scenario.key)}
-                className={`rounded-xl border p-3 text-left ${selectedScenario?.key === scenario.key ? 'border-[#1A2A54] bg-white' : 'border-[#d5dded] bg-white/70'}`}
+                className={`opti-press rounded-xl border p-3 text-left transition-all duration-200 ${selectedScenario?.key === scenario.key ? 'border-[#1A2A54] bg-white shadow-[0_10px_20px_-16px_rgba(26,42,84,0.65)]' : 'border-[#d5dded] bg-white/70 hover:bg-white'}`}
               >
                 <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">{scenario.label}</p>
                 <p className="mt-1 text-sm font-extrabold text-[#1A2A54]">Budget {formatPrice(scenario.budget)}</p>
@@ -244,12 +354,12 @@ export default function SmartMode({
           </div>
 
           {!!upgradeHint && (
-            <p className="mt-3 rounded-lg border border-[#ffd7b8] bg-[#fff3ea] px-3 py-2 text-xs font-semibold text-[#b45309]">{upgradeHint}</p>
+            <p className="opti-enter-soft opti-stagger-1 mt-3 rounded-lg border border-[#ffd7b8] bg-[#fff3ea] px-3 py-2 text-xs font-semibold text-[#b45309]">{upgradeHint}</p>
           )}
 
           <div className="mt-3 grid gap-2">
             {customizedBundle.map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-[#d5dded] bg-white px-3 py-2">
+              <div key={item.id} className="opti-enter-soft flex items-center justify-between gap-3 rounded-lg border border-[#d5dded] bg-white px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2.5">
                   {item.image_path || item.image ? (
                     <img
@@ -263,21 +373,21 @@ export default function SmartMode({
                   <div className="min-w-0">
                     <span className="text-sm font-semibold text-slate-800 line-clamp-2">{item.name}</span>
                     <div className="mt-1 flex items-center gap-1.5">
-                      <button type="button" onClick={() => updateQty(item.id, -1)} className="h-6 w-6 rounded border border-[#d5dded] text-xs font-bold text-slate-700">-</button>
+                      <button type="button" onClick={() => updateQty(item.id, -1)} className="opti-press h-6 w-6 rounded border border-[#d5dded] text-xs font-bold text-slate-700 hover:bg-[#f8fbff]">-</button>
                       <span className="min-w-7 text-center text-xs font-bold text-slate-700">{item.qty || 1}</span>
-                      <button type="button" onClick={() => updateQty(item.id, 1)} className="h-6 w-6 rounded border border-[#d5dded] text-xs font-bold text-slate-700">+</button>
+                      <button type="button" onClick={() => updateQty(item.id, 1)} className="opti-press h-6 w-6 rounded border border-[#d5dded] text-xs font-bold text-slate-700 hover:bg-[#f8fbff]">+</button>
                     </div>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className="text-xs font-bold text-[#FF6B00]">{formatPrice(Number(item.price || 0) * Number(item.qty || 1))}</span>
-                  <button type="button" onClick={() => removeItem(item.id)} className="text-[11px] font-semibold text-slate-500 hover:text-slate-700">Remove</button>
+                  <button type="button" onClick={() => removeItem(item.id)} className="opti-press text-[11px] font-semibold text-slate-500 hover:text-slate-700">Remove</button>
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="mt-4 rounded-lg border border-[#d5dded] bg-white px-3 py-2 text-sm text-slate-700">
+          <div className="opti-enter-soft opti-stagger-2 mt-4 rounded-lg border border-[#d5dded] bg-white px-3 py-2 text-sm text-slate-700">
             <p>Subtotal: <span className="font-bold text-slate-900">{formatPrice(customizedTotals.subtotal)}</span></p>
             <p>Bundle discount ({Math.round(customizedTotals.discountRate * 100)}%): <span className="font-bold text-emerald-700">- {formatPrice(customizedTotals.discountValue)}</span></p>
             <p>Total after bundle discount: <span className="font-extrabold text-[#1A2A54]">{formatPrice(customizedTotals.total)}</span></p>
@@ -287,18 +397,28 @@ export default function SmartMode({
             <button
               type="button"
               onClick={handleCheckout}
-              className="inline-flex rounded-lg bg-[#FF6B00] px-4 py-2 text-sm font-bold text-white hover:bg-[#E65C00]"
+              className="opti-press inline-flex rounded-lg bg-[#FF6B00] px-4 py-2 text-sm font-bold text-white hover:bg-[#E65C00]"
             >
               Go to checkout
             </button>
             <button
               type="button"
               onClick={() => {
+                resetSmartFlow?.();
+                if (smartCacheStorageKey) {
+                  try {
+                    localStorage.removeItem(smartCacheStorageKey);
+                  } catch {
+                    // ignore storage issues
+                  }
+                }
                 setCurrentStep(1);
+                setGoalInputTouched(false);
                 setBudgetPreference('');
                 setSelectedScenarioKey('');
+                setCustomizedBundle([]);
               }}
-              className="inline-flex rounded-lg border border-[#d5dded] bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-[#eef3fb]"
+              className="opti-press inline-flex rounded-lg border border-[#d5dded] bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-[#eef3fb]"
             >
               Back to step 1
             </button>

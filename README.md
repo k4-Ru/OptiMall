@@ -48,9 +48,9 @@ curl http://localhost:8000/health
 npm install
 ```
 
-## 4) Local Development (Frontend + API via Vercel)
+## 4) Local Development (Recommended)
 
-Single command (starts Python engine + Vercel dev):
+Single command (starts Python engine + API dev + Vite dev):
 
 ```bash
 npm run dev:fullstack
@@ -58,13 +58,18 @@ npm run dev:fullstack
 
 Manual commands:
 
-Run the app with Vercel local runtime so `/api/*` routes are available:
+Run frontend and API separately:
 
 ```bash
-npx vercel dev
+npm run api:dev
+npm run dev
 ```
 
-This serves the frontend and routes `/api/*` to `api/server.js`.
+Optional Vercel runtime (if you specifically want to test Vercel rewrites/functions):
+
+```bash
+npm run dev:vercel
+```
 
 ## 5) Clerk Setup
 

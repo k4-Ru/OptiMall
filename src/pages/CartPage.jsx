@@ -10,7 +10,8 @@ import {
   Minus,
   Trash2,
   CreditCard,
-  CheckCircle2
+  CheckCircle2,
+  Package
 } from 'lucide-react';
 
 function formatPrice(value) {
@@ -19,19 +20,27 @@ function formatPrice(value) {
 
 export default function CartPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedEntryId, setSelectedEntryId] = useState('__all__');
   const navigate = useNavigate();
-  const { cart, cartCount, cartTotal, updateQty, removeFromCart, checkout } = useCommerce();
+  const { cart, cartCount, cartTotal, updateQty, removeFromCart, checkoutSelection } = useCommerce();
+
+  const selectedEntry = useMemo(() => {
+    if (!cart.length || selectedEntryId === '__all__') return null;
+    return cart.find((entry) => String(entry.id) === String(selectedEntryId)) || null;
+  }, [cart, selectedEntryId]);
 
   const breakdown = useMemo(() => {
-    const subtotal = cartTotal;
-    const serviceFee = cart.length ? 35 : 0;
+    const subtotal = selectedEntry
+      ? Number(selectedEntry.price || 0) * Number(selectedEntry.qty || 1)
+      : cartTotal;
+    const serviceFee = subtotal > 0 ? 35 : 0;
     const simulatedDiscount = subtotal >= 5000 ? subtotal * 0.05 : 0;
     const grandTotal = subtotal + serviceFee - simulatedDiscount;
     return { subtotal, serviceFee, simulatedDiscount, grandTotal };
-  }, [cartTotal, cart.length]);
+  }, [cartTotal, selectedEntry]);
 
   function handleCheckout() {
-    const order = checkout();
+    const order = checkoutSelection(selectedEntry?.id || '__all__');
     if (order) navigate(`/orders/${order.id}`);
   }
 
@@ -88,12 +97,26 @@ export default function CartPage() {
               <h2 className="text-xs font-extrabold uppercase tracking-[0.15em] text-[#1A2A54] border-b border-slate-100 pb-3">
                 Items in Cart ({cartCount})
               </h2>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedEntryId('__all__')}
+                  className={`rounded-lg border px-3 py-1 text-[11px] font-bold ${selectedEntryId === '__all__' ? 'border-[#1A2A54] bg-[#1A2A54] text-white' : 'border-[#d5dded] bg-white text-slate-700'}`}
+                >
+                  Checkout all items
+                </button>
+              </div>
               
               <div className="mt-4 space-y-3">
                 {cart.map((item) => {
                   const initial = item.name ? item.name.substring(0, 2).toUpperCase() : 'PR';
                   return (
-                    <article key={item.id} className="rounded-xl border border-slate-100 bg-[#f8fafc] p-4 flex items-center justify-between gap-4 transition hover:border-[#cbd8ee]">
+                    <article
+                      key={item.id}
+                      onClick={() => setSelectedEntryId(String(item.id))}
+                      className={`cursor-pointer rounded-xl border bg-[#f8fafc] p-4 transition hover:border-[#cbd8ee] ${String(selectedEntry?.id || '') === String(item.id) ? 'border-[#1A2A54] ring-1 ring-[#1A2A54]/30' : 'border-slate-100'}`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-4">
                         {/* Product thumbnail — real image or initials fallback */}
                         <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -111,6 +134,12 @@ export default function CartPage() {
                         </div>
                         <div>
                           <h4 className="font-bold text-slate-800 text-sm leading-snug">{item.name}</h4>
+                          {item.entry_type === 'bundle' && (
+                            <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#edf3fb] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1A2A54]">
+                              <Package className="h-3 w-3" />
+                              Bundle
+                            </p>
+                          )}
                           <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">{item.category || 'Uncategorized'}</p>
                           <p className="mt-1.5 text-xs font-extrabold text-[#FF6B00]">{formatPrice(item.price)}</p>
                         </div>
@@ -122,7 +151,7 @@ export default function CartPage() {
                           <button
                             type="button"
                             onClick={() => updateQty(item.id, item.qty - 1)}
-                            disabled={item.qty <= 1}
+                            disabled={item.qty <= 1 || item.entry_type === 'bundle'}
                             className="flex h-7 w-7 items-center justify-center rounded bg-[#f8fafc] text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
                           >
                             <Minus className="h-3 w-3" />
@@ -131,6 +160,7 @@ export default function CartPage() {
                           <button
                             type="button"
                             onClick={() => updateQty(item.id, item.qty + 1)}
+                            disabled={item.entry_type === 'bundle'}
                             className="flex h-7 w-7 items-center justify-center rounded bg-[#f8fafc] text-slate-600 transition hover:bg-slate-100"
                           >
                             <Plus className="h-3 w-3" />
@@ -138,15 +168,31 @@ export default function CartPage() {
                         </div>
                         
                         {/* Remove Button */}
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.id)}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-600 transition hover:bg-red-100 hover:text-red-700 active:scale-[0.95]"
-                          title="Remove item"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromCart(item.id);
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-600 transition hover:bg-red-100 hover:text-red-700 active:scale-[0.95]"
+                            title="Remove item"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
+                      </div>
+                      {item.entry_type === 'bundle' && Array.isArray(item.bundle_items) && item.bundle_items.length > 0 && (
+                        <div className="mt-3 grid gap-1 rounded-lg border border-[#e0e7f3] bg-white p-2">
+                          {item.bundle_items.map((bundleItem) => (
+                            <div key={`${item.id}-${bundleItem.id}`} className="flex items-center justify-between text-[11px]">
+                              <span className="text-slate-700">{bundleItem.name} x{bundleItem.qty || 1}</span>
+                              <span className="font-bold text-slate-600">{formatPrice(Number(bundleItem.price || 0) * Number(bundleItem.qty || 1))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </article>
                   );
                 })}
@@ -156,10 +202,15 @@ export default function CartPage() {
             {/* Payment / Simulation Summary Details */}
             <aside className="rounded-2xl border border-[#d5dded] bg-white p-5 shadow-sm h-fit">
               <h2 className="text-xs font-extrabold uppercase tracking-[0.15em] text-[#1A2A54] border-b border-slate-100 pb-3">
-                Payment Simulation
+                Payment Summary
               </h2>
               
               <div className="mt-4 space-y-3 text-xs">
+                <div className="rounded-lg border border-[#d5dded] bg-[#f8fbff] px-3 py-2 text-[11px] font-semibold text-slate-600">
+                  {selectedEntry
+                    ? `Selected entry: ${selectedEntry.name}`
+                    : 'Selected entry: All cart items'}
+                </div>
                 <div className="flex justify-between font-medium text-slate-550">
                   <span className="text-slate-500">Subtotal</span>
                   <span className="text-slate-800 font-bold">{formatPrice(breakdown.subtotal)}</span>
@@ -185,7 +236,7 @@ export default function CartPage() {
               <div className="mt-5 flex items-start gap-2.5 rounded-xl bg-orange-50/60 p-3 text-[11px] font-semibold text-slate-700 border border-orange-100/50">
                 <CreditCard className="h-4 w-4 shrink-0 text-[#FF6B00] mt-0.5" />
                 <p className="leading-normal">
-                  Confirming checkout sets the order status to paid and instantly triggers order status tracking.
+                Confirming checkout sets the order status to paid and instantly triggers order status tracking.
                 </p>
               </div>
 
@@ -195,7 +246,7 @@ export default function CartPage() {
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#FF6B00] py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-[#FF6B00]/25 transition duration-150 hover:bg-[#E65C00] active:scale-[0.98]"
               >
                 <CheckCircle2 className="h-4 w-4" />
-                Confirm Checkout
+                Proceed to Checkout
               </button>
             </aside>
           </section>

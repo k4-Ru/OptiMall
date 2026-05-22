@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import {
   ArrowLeft,
@@ -12,6 +11,7 @@ import {
   Store,
   Zap,
 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { getProducts, postIntelligencePipeline } from '../lib/api';

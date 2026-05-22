@@ -29,6 +29,7 @@ export function normalizeProducts(products) {
       price: toNumber(product?.price, 0),
       rating: toNumber(product?.rating, 0),
       stock: toNumber(product?.stock, 0),
+      image_path: product?.image_path ? String(product.image_path) : null,
       tags: product?.tags ?? [],
       popularity_score: toNumber(product?.popularity_score, 0),
       outcome_boost: toNumber(product?.outcome_boost, 0),

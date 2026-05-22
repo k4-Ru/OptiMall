@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import './styles.css';
 
 import AppLayout from './components/AppLayout';
@@ -29,28 +30,42 @@ if (!clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY. Add it to .env');
 }
 
+function RequireAuth({ children }) {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return <main className="min-h-screen bg-[#eef2f6]" />;
+  }
+
+  if (!isSignedIn) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
+
 function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<AppLayout />}>
           <Route index element={<LandingPage />} />
-          <Route path="home" element={<HomePage />} />
           <Route path="login/*" element={<LoginPage />} />
           <Route path="signup/*" element={<SignupPage />} />
-          <Route path="cart" element={<CartPage />} />
-          <Route path="deals" element={<DealsPage />} />
-          <Route path="new-arrivals" element={<NewArrivalsPage />} />
-          <Route path="brands" element={<BrandsPage />} />
-          <Route path="smart-bundles" element={<SmartBundlesPage />} />
-          <Route path="products" element={<ProductsPage />} />
-          <Route path="products/:id" element={<ProductDetailPage />} />
-          <Route path="recommendations" element={<RecommendationsPage />} />
-          <Route path="activity" element={<ActivityPage />} />
-          <Route path="notifications" element={<NotificationsPage />} />
-          <Route path="account" element={<AccountPage />} />
-          <Route path="orders" element={<OrderTrackingPage />} />
-          <Route path="orders/:orderId" element={<OrderTrackingPage />} />
+          <Route path="home" element={<RequireAuth><HomePage /></RequireAuth>} />
+          <Route path="cart" element={<RequireAuth><CartPage /></RequireAuth>} />
+          <Route path="deals" element={<RequireAuth><DealsPage /></RequireAuth>} />
+          <Route path="new-arrivals" element={<RequireAuth><NewArrivalsPage /></RequireAuth>} />
+          <Route path="brands" element={<RequireAuth><BrandsPage /></RequireAuth>} />
+          <Route path="smart-bundles" element={<RequireAuth><SmartBundlesPage /></RequireAuth>} />
+          <Route path="products" element={<RequireAuth><ProductsPage /></RequireAuth>} />
+          <Route path="products/:id" element={<RequireAuth><ProductDetailPage /></RequireAuth>} />
+          <Route path="recommendations" element={<RequireAuth><RecommendationsPage /></RequireAuth>} />
+          <Route path="activity" element={<RequireAuth><ActivityPage /></RequireAuth>} />
+          <Route path="notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
+          <Route path="account" element={<RequireAuth><AccountPage /></RequireAuth>} />
+          <Route path="orders" element={<RequireAuth><OrderTrackingPage /></RequireAuth>} />
+          <Route path="orders/:orderId" element={<RequireAuth><OrderTrackingPage /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

@@ -1,9 +1,67 @@
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useCommerce } from '../lib/commerceContext';
 
 export default function Header({ mode, onModeChange }) {
   const { cartCount } = useCommerce();
+  const cartBadgeRef = useRef(null);
+  const prevCartCountRef = useRef(cartCount);
   const modeIndex = mode === 'smart' ? 1 : 0;
+
+  useEffect(() => {
+    function handleFlyToCart(event) {
+      const badge = cartBadgeRef.current;
+      if (!badge) return;
+      const detail = event?.detail || {};
+      const startX = Number(detail.x || 0);
+      const startY = Number(detail.y || 0);
+      if (!startX && !startY) return;
+
+      const rect = badge.getBoundingClientRect();
+      const endX = rect.left + rect.width / 2;
+      const endY = rect.top + rect.height / 2;
+
+      const token = document.createElement('span');
+      token.className = 'opti-cart-fly-token';
+      token.style.left = `${startX}px`;
+      token.style.top = `${startY}px`;
+      document.body.appendChild(token);
+
+      requestAnimationFrame(() => {
+        token.style.transform = `translate(${endX - startX}px, ${endY - startY}px) scale(0.35)`;
+        token.style.opacity = '0.2';
+      });
+
+      const cleanup = () => {
+        token.removeEventListener('transitionend', cleanup);
+        token.remove();
+      };
+      token.addEventListener('transitionend', cleanup);
+      setTimeout(cleanup, 900);
+    }
+
+    window.addEventListener('optimall:cart-add', handleFlyToCart);
+    return () => {
+      window.removeEventListener('optimall:cart-add', handleFlyToCart);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (cartCount <= prevCartCountRef.current) {
+      prevCartCountRef.current = cartCount;
+      return;
+    }
+    const badge = cartBadgeRef.current;
+    if (!badge) {
+      prevCartCountRef.current = cartCount;
+      return;
+    }
+    badge.classList.remove('opti-cart-badge-pop');
+    // force reflow to restart animation class cleanly
+    void badge.offsetWidth;
+    badge.classList.add('opti-cart-badge-pop');
+    prevCartCountRef.current = cartCount;
+  }, [cartCount]);
 
   return (
     <header className="sticky top-0 z-40 bg-[#1A2A54] text-white">
@@ -21,7 +79,7 @@ export default function Header({ mode, onModeChange }) {
             className="relative rounded-full bg-white/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.11em] transition-colors hover:bg-white/20 sm:px-4 sm:text-xs"
           >
             Cart
-            <span className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#FF6B00] px-1 text-[10px] text-white">
+            <span ref={cartBadgeRef} className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#FF6B00] px-1 text-[10px] text-white">
               {cartCount}
             </span>
           </Link>
