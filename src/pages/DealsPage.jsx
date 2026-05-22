@@ -56,7 +56,7 @@ export default function DealsPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   return (
-    <div className="min-h-screen bg-white font-sans pb-16">
+    <div className="min-h-screen font-sans pb-16">
       <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
 
       <main className="mx-auto max-w-[1440px] px-8 pt-8">

@@ -23,7 +23,14 @@ html {
 }
 
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(244, 247, 252, 0.90), rgba(244, 247, 252, 0.75)),
+    url('/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--ink);
   font-family: 'Manrope', sans-serif;
 }

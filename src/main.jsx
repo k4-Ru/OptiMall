@@ -75,7 +75,7 @@ function RequireAuth({ children }) {
   }, [isLoaded, isSignedIn, getToken, signOut]);
 
   if (!isLoaded || !checkedAccess) {
-    return <main className="min-h-screen bg-[#eef2f6]" />;
+    return <main className="min-h-screen" />;
   }
 
   if (forcingLogout) {
@@ -102,7 +102,7 @@ function SecurityLogoutPage() {
   }, [signOut]);
 
   return (
-    <main className="grid min-h-screen place-items-center bg-[#eef2f6] px-4">
+    <main className="grid min-h-screen place-items-center px-4">
       <div className="rounded-xl border border-[#d5dded] bg-white px-7 py-6 text-center shadow-sm">
         <p className="text-base font-extrabold text-slate-900">Logging out...</p>
         <p className="mt-1 text-sm font-semibold text-slate-600">Suspicious activity detected.</p>

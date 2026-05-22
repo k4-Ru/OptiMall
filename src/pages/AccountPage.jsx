@@ -43,7 +43,7 @@ export default function AccountPage() {
   const isDelivered = latestOrder ? !!latestOrder.tracking_steps?.find((s) => s.key === 'delivered')?.done : false;
 
   return (
-    <div className="min-h-screen bg-[#eef2f6] pb-12">
+    <div className="min-h-screen pb-12">
       <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       
       <main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6">

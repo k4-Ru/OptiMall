@@ -49,7 +49,7 @@ export default function NotificationsPage() {
   }, [orders.length, cartCount]);
 
   return (
-    <div className="min-h-screen bg-[#eef2f6] pb-12">
+    <div className="min-h-screen pb-12">
       <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <main className="mx-auto max-w-[960px] px-4 py-6 sm:px-6">
         <section className="rounded-2xl border border-[#d5dded] bg-[#f8fbff] p-6">

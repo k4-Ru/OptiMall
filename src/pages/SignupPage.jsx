@@ -10,47 +10,76 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-white font-sans">
+    <div
+      className="relative flex min-h-screen overflow-hidden font-sans"
+      style={{
+        backgroundImage: "url('/bg.jpg')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[#eef2f6]/70" />
       
       {/* Left Branding Panel */}
-      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1A2A54] to-[#101B3A] p-16 text-white lg:flex">
-         {/* Background decorative elements */}
-         <div className="absolute -mr-20 -mt-20 right-0 top-0 h-96 w-96 rounded-full bg-blue-600 opacity-20 blur-[100px]"></div>
-         <div className="absolute -mb-20 -ml-20 bottom-0 left-0 h-96 w-96 rounded-full bg-[#FF6B00] opacity-20 blur-[100px]"></div>
-         
-         <div className="relative z-10">
-            <Link to="/home" className="flex items-center gap-4 transition-transform hover:scale-[1.02]">
-               <img src="/images/logo.png" alt="OptiMall Logo" className="h-20 w-auto object-contain drop-shadow-lg" />
-               <span className="text-5xl font-extrabold tracking-tight">
-                 Opti<span className="text-[#FF6B00]">Mall</span>
-               </span>
-            </Link>
-         </div>
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r border-[#1a2a54]/12 bg-[#f8fafc] text-[#0f172a] lg:flex">
+         <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_12%,rgba(26,42,84,0.18),transparent_48%),radial-gradient(circle_at_88%_84%,rgba(255,107,0,0.16),transparent_45%)]" />
 
-         <div className="relative z-10 max-w-xl">
-            <h1 className="mb-8 text-5xl font-black leading-tight tracking-tight lg:text-6xl">
-              Start Your Journey<br />With Us
-            </h1>
-            <p className="text-xl leading-relaxed text-blue-100/80 font-medium">
-              Create an account to unlock AI-picked bundles, save your favorite items, and enjoy a seamless shopping experience.
-            </p>
-         </div>
+         <div className="relative z-10 grid h-full grid-rows-[auto_1fr_auto]">
+            <div className="px-12 pt-12">
+               <Link to="/home" className="inline-flex items-center gap-4">
+                  <img src="/images/logo.png" alt="OptiMall Logo" className="h-16 w-auto object-contain" />
+                  <div className="leading-none">
+                    <p className="text-xs font-semibold tracking-wide text-[#475569]">Shopping intelligence</p>
+                    <span className="block text-4xl font-extrabold tracking-tight text-[#1a2a54]">OptiMall</span>
+                  </div>
+               </Link>
+            </div>
 
-         <div className="relative z-10 text-sm font-medium text-blue-200/60">
-            © {new Date().getFullYear()} OptiMall. All rights reserved.
+            <div className="grid content-between gap-8 px-12 py-12">
+              <div>
+                <p className="mb-4 inline-flex rounded-full border border-[#1a2a54]/25 bg-[#1a2a54]/8 px-3 py-1 text-xs font-semibold text-[#1a2a54]">
+                  Create account
+                </p>
+                <h1 className="max-w-[12ch] text-[clamp(2.4rem,4vw,3.8rem)] font-extrabold leading-[1.05] tracking-tight text-balance">
+                  Start your personalized shopping experience
+                </h1>
+                <p className="mt-5 max-w-[52ch] text-base leading-relaxed text-[#475569]">
+                  Sign up once to unlock tailored recommendations, bundle guidance, and smoother checkout across devices.
+                </p>
+              </div>
+
+              <div className="grid gap-3">
+                <div className="rounded-2xl border border-[#1a2a54]/16 bg-white/82 px-5 py-4 shadow-[0_14px_32px_rgba(26,42,84,0.11)]">
+                  <p className="text-sm font-semibold text-[#0f172a]">Preference-aware discovery</p>
+                  <p className="mt-1 text-sm text-[#475569]">Get relevant products sooner based on your interests.</p>
+                </div>
+                <div className="rounded-2xl border border-[#ff6b00]/30 bg-white/86 px-5 py-4 shadow-[0_14px_32px_rgba(255,107,0,0.16)]">
+                  <p className="text-sm font-semibold text-[#0f172a]">Smart bundle suggestions</p>
+                  <p className="mt-1 text-sm text-[#475569]">Compare budget tiers with practical item combinations.</p>
+                </div>
+                <div className="rounded-2xl border border-[#1a2a54]/16 bg-white/82 px-5 py-4 shadow-[0_14px_32px_rgba(26,42,84,0.11)]">
+                  <p className="text-sm font-semibold text-[#0f172a]">Unified cart and orders</p>
+                  <p className="mt-1 text-sm text-[#475569]">Keep cart, bundles, and checkout in one consistent flow.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-12 pb-10 text-sm text-[#64748b]">
+              © {new Date().getFullYear()} OptiMall. All rights reserved.
+            </div>
          </div>
       </div>
 
       {/* Right Login Panel */}
-      <div className="relative flex w-full items-center justify-center bg-[#F4F7FA] p-6 sm:p-12 lg:w-1/2">
+      <div className="relative flex w-full items-center justify-center bg-[#f8fafc]/84 p-6 sm:p-12 lg:w-1/2">
          <div className="flex w-full max-w-[440px] flex-col items-center">
             
             {/* Mobile Logo Header */}
             <div className="mb-10 flex flex-col items-center justify-center lg:hidden">
                <Link to="/home" className="flex flex-col items-center gap-3 transition-transform active:scale-95">
                   <img src="/images/logo.png" alt="OptiMall Logo" className="h-20 w-auto object-contain drop-shadow-md" />
-                  <span className="text-4xl font-extrabold tracking-tight text-[#1A2A54]">
-                    Opti<span className="text-[#FF6B00]">Mall</span>
+                  <span className="text-4xl font-extrabold tracking-tight text-[#1a2a54]">
+                    Opti<span className="text-[#ff6b00]">Mall</span>
                   </span>
                </Link>
             </div>
@@ -63,17 +92,17 @@ export default function SignupPage() {
               appearance={{
                 elements: {
                   rootBox: "w-full",
-                  card: "w-full shadow-[0_8px_40px_rgb(0,0,0,0.06)] rounded-3xl border border-white/60 bg-white/80 p-8 sm:p-10 backdrop-blur-xl",
-                  headerTitle: "text-3xl font-extrabold text-[#1A2A54] tracking-tight",
-                  headerSubtitle: "text-gray-500 font-medium text-base mt-2",
-                  formButtonPrimary: "bg-[#FF6B00] hover:bg-[#E65C00] text-base font-bold shadow-lg shadow-orange-500/20 transition-all py-3.5 rounded-xl",
-                  formFieldInput: "rounded-xl border-gray-200 focus:ring-2 focus:ring-[#FF6B00]/20 focus:border-[#FF6B00] py-3 text-base transition-all bg-gray-50 hover:bg-gray-100",
-                  formFieldLabel: "text-gray-700 font-bold mb-1.5",
-                  dividerText: "text-gray-400 font-medium",
-                  dividerLine: "bg-gray-200",
-                  socialButtonsBlockButton: "border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 rounded-xl py-3.5 transition-all shadow-sm",
-                  socialButtonsBlockButtonText: "font-semibold text-gray-700",
-                  footerActionLink: "text-[#FF6B00] hover:text-[#E65C00] font-bold text-base"
+                  card: "w-full rounded-3xl border border-[#1a2a54]/18 bg-white/90 p-8 sm:p-10 shadow-[0_20px_60px_rgba(26,42,84,0.16)] backdrop-blur-md",
+                  headerTitle: "text-[30px] font-extrabold text-[#0f172a] tracking-tight",
+                  headerSubtitle: "text-[#475569] font-medium text-sm mt-2",
+                  formButtonPrimary: "bg-[#ff6b00] hover:bg-[#e65c00] text-base font-semibold transition-all duration-300 py-3.5 rounded-xl shadow-[0_12px_28px_rgba(255,107,0,0.34)] active:scale-[0.98]",
+                  formFieldInput: "rounded-xl border border-[#1a2a54]/22 focus:ring-2 focus:ring-[#1a2a54]/18 focus:border-[#1a2a54] py-3 text-base transition-all bg-white text-[#0f172a] hover:border-[#1a2a54]/34",
+                  formFieldLabel: "text-[#0f172a] font-semibold mb-1.5",
+                  dividerText: "text-[#64748b] font-medium text-xs",
+                  dividerLine: "bg-[#1a2a54]/20",
+                  socialButtonsBlockButton: "border border-[#1a2a54]/18 bg-white hover:bg-[#f8fafc] hover:border-[#1a2a54]/32 rounded-xl py-3.5 transition-all duration-300 shadow-[0_8px_20px_rgba(26,42,84,0.06)]",
+                  socialButtonsBlockButtonText: "font-semibold text-[#0f172a] text-sm",
+                  footerActionLink: "text-[#ff6b00] hover:text-[#e65c00] font-semibold text-sm"
                 }
               }}
             />

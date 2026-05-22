@@ -19,7 +19,7 @@ export default function OrderTrackingPage() {
   }, [orders, orderId]);
 
   return (
-    <div className="min-h-screen bg-[#EDF1F6] font-sans pb-12">
+    <div className="min-h-screen font-sans pb-12">
       <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <main className="mx-auto max-w-[1280px] px-6 py-8">
         <section className="rounded-2xl bg-gradient-to-r from-[#112A4B] via-[#1B3F72] to-[#112A4B] p-7 text-white shadow">

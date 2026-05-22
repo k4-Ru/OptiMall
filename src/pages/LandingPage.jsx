@@ -71,7 +71,7 @@ export default function LandingPage() {
   };
 
   return (
-    <main className="opti-noise relative min-h-screen overflow-hidden bg-[#f4f7fc] px-4 pb-24 pt-16 sm:px-6 md:px-8 lg:pt-24">
+    <main className="opti-noise relative min-h-screen overflow-hidden px-4 pb-24 pt-16 sm:px-6 md:px-8 lg:pt-24">
       {/* Decorative Blur Blobs */}
       <div className="absolute -left-20 top-20 h-72 w-72 rounded-full bg-[#1A2A54]/5 blur-[80px]" />
       <div className="absolute -right-20 top-40 h-80 w-80 rounded-full bg-[#FF6B00]/5 blur-[100px]" />
@@ -79,12 +79,7 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="relative mx-auto grid max-w-[1280px] gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
         <div className="opti-slide-up relative z-10 flex flex-col justify-center">
-          <div className="inline-flex max-w-max items-center gap-2 rounded-full border border-[#cbd8ee] bg-[#e8eef8]/80 px-4 py-1.5 backdrop-blur-sm">
-            <span className="flex h-2 w-2 rounded-full bg-[#FF6B00] animate-pulse" />
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#1A2A54]">
-              Intelligent Shopping Platform
-            </p>
-          </div>
+       
 
           <h1 className="mt-6 text-[clamp(2.5rem,6vw,5rem)] font-extrabold leading-[1.05] tracking-[-0.04em] text-[#0f172a]">
             Browse Fast.<br />

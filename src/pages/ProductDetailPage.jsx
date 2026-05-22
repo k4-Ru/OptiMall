@@ -217,7 +217,7 @@ export default function ProductDetailPage() {
   }, [product?.id]);
 
   return (
-    <div className="min-h-screen bg-[#EDF1F6] font-sans pb-12">
+    <div className="min-h-screen font-sans pb-12">
       <Header />
       <main className="mx-auto max-w-[1280px] px-6 py-8">
         {loading && <p className="text-slate-600">Loading product...</p>}

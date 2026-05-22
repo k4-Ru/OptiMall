@@ -48,7 +48,7 @@ export default function BrandsPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA] pb-16 font-sans">
+    <div className="min-h-screen pb-16 font-sans">
       <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <div className="mx-auto flex max-w-[1440px] gap-8 px-8 py-8">
 

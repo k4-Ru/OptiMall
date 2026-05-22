@@ -113,7 +113,7 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#eef2f6] pb-12">
+    <div className="min-h-screen pb-12">
       <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       
       <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6">

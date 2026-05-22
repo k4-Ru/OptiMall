@@ -26,7 +26,7 @@ const CORE_GOALS = [
 export default function HomePage() {
   const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
-  const { addToCart, addBundleToCart } = useCommerce();
+  const { addBundleToCart } = useCommerce();
 
   const [mode, setMode] = useState('normal');
   const [searchQuery, setSearchQuery] = useState('');
@@ -184,7 +184,7 @@ export default function HomePage() {
               if (Number(rec?.embedding_similarity || fallback?.embedding_similarity || 0) > 0.55) reasons.push('semantic match');
               if (Number(rec?.outcome_boost || fallback?.outcome_boost || 0) > 0.35) reasons.push('activity match');
               if (Number(rec?.popularity_score || fallback?.popularity_score || 0) >= 40) reasons.push('popular now');
-              if (Number(rec?.price || fallback?.price || 0) > 0 && Number(rec?.price || fallback?.price || 0) <= 1500) reasons.push('budget fit');
+              if (Number(rec?.price || fallback?.price || 0) > 0 && Number(rec?.price || fallback?.price || 0) <= 1500) reasons.push('price-friendly');
               return {
                 ...fallback,
                 ...rec,
@@ -346,7 +346,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#eef2f6] pb-16">
+    <div className="min-h-screen pb-16">
       <Header mode={resolvedMode} onModeChange={setMode} />
 
       <main className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
@@ -371,7 +371,6 @@ export default function HomePage() {
             debugReco={debugReco}
             recommendedProducts={recommendedProducts}
             popularBundles={popularBundles}
-            addToCart={addToCart}
             addBundleToCart={addBundleToCart}
             filteredProducts={filteredProducts}
             loadingProducts={loadingProducts}

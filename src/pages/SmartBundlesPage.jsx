@@ -89,7 +89,7 @@ export default function SmartBundlesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA] pb-16 font-sans">
+    <div className="min-h-screen pb-16 font-sans">
       <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <main className="mx-auto max-w-[1440px] px-8 py-8">
         <section className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
