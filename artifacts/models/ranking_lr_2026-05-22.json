@@ -1,0 +1,124 @@
+{
+  "model_key": "ranking_lr",
+  "model_version": "ranking_lr_2026-05-22",
+  "trained_at": "2026-05-22T08:08:36.770Z",
+  "training": {
+    "window_days": 120,
+    "max_rows": 50000,
+    "train_rows": 4,
+    "val_rows": 2,
+    "epochs": 25,
+    "lr": 0.08,
+    "l2": 0.0005
+  },
+  "features": [
+    "request_count",
+    "view_count",
+    "click_count",
+    "cart_count",
+    "search_count",
+    "days_since_last_event",
+    "category_affinity",
+    "price_affinity",
+    "popularity_score",
+    "embedding_similarity",
+    "prior_ctr",
+    "prior_cvr"
+  ],
+  "scaler": {
+    "request_count": {
+      "p05": 0,
+      "p95": 0,
+      "span": 0.000001
+    },
+    "view_count": {
+      "p05": 1,
+      "p95": 2,
+      "span": 1
+    },
+    "click_count": {
+      "p05": 0,
+      "p95": 0,
+      "span": 0.000001
+    },
+    "cart_count": {
+      "p05": 0,
+      "p95": 0,
+      "span": 0.000001
+    },
+    "search_count": {
+      "p05": 0,
+      "p95": 0,
+      "span": 0.000001
+    },
+    "days_since_last_event": {
+      "p05": 3,
+      "p95": 3,
+      "span": 0.000001
+    },
+    "category_affinity": {
+      "p05": 0.1333,
+      "p95": 0.4667,
+      "span": 0.33340000000000003
+    },
+    "price_affinity": {
+      "p05": 0.2743,
+      "p95": 0.4708,
+      "span": 0.1965
+    },
+    "popularity_score": {
+      "p05": 0,
+      "p95": 0,
+      "span": 0.000001
+    },
+    "embedding_similarity": {
+      "p05": 0.8179,
+      "p95": 0.8471,
+      "span": 0.029200000000000004
+    },
+    "prior_ctr": {
+      "p05": 0,
+      "p95": 0,
+      "span": 0.000001
+    },
+    "prior_cvr": {
+      "p05": 0,
+      "p95": 0,
+      "span": 0.000001
+    }
+  },
+  "weights": [
+    -1.1500861949835623,
+    0,
+    -0.8310082652411849,
+    0,
+    0,
+    0,
+    0,
+    -0.764296095272917,
+    -0.5090337514790143,
+    0,
+    -0.655720932384002,
+    0,
+    0
+  ],
+  "metrics": {
+    "train": {
+      "auc": 0.5,
+      "recall_at_5": 0,
+      "ndcg_at_5": 0,
+      "recall_at_10": 0,
+      "ndcg_at_10": 0,
+      "eval_groups": 0
+    },
+    "validation": {
+      "auc": 0.5,
+      "recall_at_5": 0,
+      "ndcg_at_5": 0,
+      "recall_at_10": 0,
+      "ndcg_at_10": 0,
+      "eval_groups": 0
+    }
+  },
+  "notes": "Logistic ranking baseline trained from user_product_features_daily"
+}
