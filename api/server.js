@@ -151,6 +151,24 @@ function applyOutcomeBoost(products, activityEvents) {
   }));
 }
 
+function mapActivityToInteractionType(eventType) {
+  const type = String(eventType || '').toLowerCase();
+  if (type === 'view_product') return 'viewed';
+  if (type === 'click_product') return 'clicked';
+  if (type === 'add_to_cart') return 'carted';
+  if (type === 'purchase') return 'purchased';
+  if (type === 'search') return 'searched';
+  return null;
+}
+
+function inferDeviceType(userAgent) {
+  const ua = String(userAgent || '').toLowerCase();
+  if (!ua) return 'desktop';
+  if (ua.includes('ipad') || (ua.includes('android') && !ua.includes('mobile'))) return 'tablet';
+  if (ua.includes('mobile') || ua.includes('iphone') || ua.includes('android')) return 'mobile';
+  return 'desktop';
+}
+
 async function safeWriteRecommendationLog(pool, payload) {
   try {
     await pool.query(
@@ -213,10 +231,14 @@ async function refreshProductPopularityScore(pool, productId) {
 const PRODUCT_WITH_METADATA_SQL = `
   SELECT
     p.*,
+    s.name AS seller_name,
+    s.location AS seller_location,
+    s.rating AS seller_rating,
     COALESCE(pm.popularity_score, 0) AS popularity_score,
     pm.tag_vector,
     pm.extra
   FROM products p
+  LEFT JOIN sellers s ON s.id = p.seller_id
   LEFT JOIN product_metadata pm ON pm.product_id = p.id
 `;
 
@@ -269,6 +291,9 @@ app.post('/api/activity', requireClerkAuth, ensureUserRecord, async (req, res) =
       category_id = null,
       search_query = null,
       weight_score = 1,
+      session_id = null,
+      duration_seconds = 0,
+      device_type = null,
     } = req.body || {};
 
     if (!event_type) {
@@ -281,6 +306,22 @@ app.post('/api/activity', requireClerkAuth, ensureUserRecord, async (req, res) =
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [req.auth.dbUserId, req.auth.userId, event_type, product_id, category_id, search_query, weight_score]
     );
+
+    const interactionType = mapActivityToInteractionType(event_type);
+    if (interactionType) {
+      const safeDuration = Math.max(0, Number(duration_seconds) || 0);
+      const resolvedDeviceType = ['mobile', 'desktop', 'tablet'].includes(String(device_type || '').toLowerCase())
+        ? String(device_type).toLowerCase()
+        : inferDeviceType(req.headers['user-agent']);
+      const safeSessionId = session_id ? String(session_id).slice(0, 100) : null;
+      const safeProductId = product_id == null ? null : Number(product_id);
+
+      await pool.query(
+        `INSERT INTO user_interactions (user_id, product_id, interaction_type, duration_seconds, session_id, device_type)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [req.auth.dbUserId, safeProductId, interactionType, safeDuration, safeSessionId, resolvedDeviceType]
+      );
+    }
 
     if (product_id) {
       await refreshProductPopularityScore(pool, product_id);

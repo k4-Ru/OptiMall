@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
@@ -29,6 +30,79 @@ export default function NormalMode({
   filteredProducts,
   loadingProducts,
 }) {
+  const filtersRef = useRef(null);
+
+  useEffect(() => {
+    const el = filtersRef.current;
+    if (!el) return undefined;
+
+    let rafId = 0;
+    let direction = 1;
+    let userPaused = false;
+    let inView = false;
+    let lastTs = 0;
+    const SPEED = 32; // px/sec
+    const EDGE_HOLD_MS = 650;
+    let edgeHoldUntil = 0;
+
+    function tick(ts) {
+      if (!lastTs) lastTs = ts;
+      const dt = (ts - lastTs) / 1000;
+      lastTs = ts;
+
+      if (inView && !userPaused && el.scrollWidth > el.clientWidth) {
+        if (ts >= edgeHoldUntil) {
+          el.scrollLeft += direction * SPEED * dt;
+          const max = el.scrollWidth - el.clientWidth;
+          if (el.scrollLeft <= 0) {
+            el.scrollLeft = 0;
+            direction = 1;
+            edgeHoldUntil = ts + EDGE_HOLD_MS;
+          } else if (el.scrollLeft >= max) {
+            el.scrollLeft = max;
+            direction = -1;
+            edgeHoldUntil = ts + EDGE_HOLD_MS;
+          }
+        }
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        inView = entry.isIntersecting;
+      },
+      { threshold: 0.35 }
+    );
+    io.observe(el);
+
+    const pause = () => {
+      userPaused = true;
+    };
+    const resume = () => {
+      userPaused = false;
+    };
+
+    el.addEventListener('mouseenter', pause);
+    el.addEventListener('mouseleave', resume);
+    el.addEventListener('touchstart', pause, { passive: true });
+    el.addEventListener('touchend', resume, { passive: true });
+    el.addEventListener('wheel', pause, { passive: true });
+
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      io.disconnect();
+      el.removeEventListener('mouseenter', pause);
+      el.removeEventListener('mouseleave', resume);
+      el.removeEventListener('touchstart', pause);
+      el.removeEventListener('touchend', resume);
+      el.removeEventListener('wheel', pause);
+    };
+  }, []);
+
   return (
     <section className="opti-slide-up space-y-5 rounded-2xl border border-[#d5dded] bg-white p-6 text-center">
 
@@ -45,7 +119,7 @@ export default function NormalMode({
         />
       </div>
 
-      <div className="opti-enter-soft opti-stagger-1 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div ref={filtersRef} className="opti-enter-soft opti-stagger-1 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
         {categories.map((cat) => (
           <button
             key={cat}

@@ -30,7 +30,7 @@ export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isSignedIn, getToken } = useAuth();
-  const { addToCart } = useCommerce();
+  const { addToCart, addBundleToCart } = useCommerce();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingBundles, setLoadingBundles] = useState(false);
@@ -151,13 +151,22 @@ export default function ProductDetailPage() {
               token
             );
             const bundleOpt = data?.bundle_optimization || {};
+            const productById = new Map(products.map((item) => [Number(item.id), item]));
+            const enrichedBundle = (bundleOpt.bundle || []).map((item) => {
+              const fallback = productById.get(Number(item?.id || 0)) || {};
+              return {
+                ...fallback,
+                ...item,
+                image_path: item?.image_path || fallback?.image_path || null,
+              };
+            });
             return {
               ...tier,
               budget,
               total: Number(bundleOpt.total_cost || 0),
               remaining: Number(bundleOpt.remaining_budget || 0),
               score: Number(bundleOpt.bundle_score || 0),
-              bundle: bundleOpt.bundle || [],
+              bundle: enrichedBundle,
             };
           })
         );
@@ -287,7 +296,20 @@ export default function ProductDetailPage() {
                       <div className="mt-3 space-y-2">
                         {tier.bundle.slice(0, 4).map((item) => (
                           <div key={`${tier.key}-${item.id}`} className="flex items-center justify-between gap-2 rounded border border-[#d5dded] bg-white px-2 py-1.5">
-                            <span className="truncate text-xs font-semibold text-slate-700">{item.name}</span>
+                            <div className="flex min-w-0 items-center gap-2">
+                              {item.image_path ? (
+                                <img
+                                  src={item.image_path}
+                                  alt={item.name}
+                                  className="h-8 w-8 shrink-0 rounded border border-[#d5dded] bg-white object-contain p-0.5"
+                                />
+                              ) : (
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[#d5dded] bg-[#f8fbff] text-[9px] font-bold text-slate-400">
+                                  N/A
+                                </div>
+                              )}
+                              <span className="truncate text-xs font-semibold text-slate-700">{item.name}</span>
+                            </div>
                             <button type="button" onClick={() => addToCart(item, 1)} className="rounded bg-[#1A2A54] px-2 py-1 text-[10px] font-bold text-white">
                               Add
                             </button>
@@ -295,6 +317,15 @@ export default function ProductDetailPage() {
                         ))}
                         {!tier.bundle.length && <p className="text-xs text-slate-400">No items for this tier.</p>}
                       </div>
+                      {!!tier.bundle.length && (
+                        <button
+                          type="button"
+                          onClick={() => addBundleToCart(tier.bundle, { name: `${product.name} - ${tier.label}`, total: tier.total, scenarioKey: tier.key })}
+                          className="mt-3 w-full rounded bg-[#FF6B00] px-2 py-1.5 text-[11px] font-bold text-white"
+                        >
+                          Add Tier Bundle
+                        </button>
+                      )}
                     </article>
                   ))}
                 </div>

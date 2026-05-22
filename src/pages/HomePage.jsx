@@ -26,7 +26,7 @@ const CORE_GOALS = [
 export default function HomePage() {
   const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
-  const { addToCart } = useCommerce();
+  const { addToCart, addBundleToCart } = useCommerce();
 
   const [mode, setMode] = useState('normal');
   const [searchQuery, setSearchQuery] = useState('');
@@ -166,8 +166,20 @@ export default function HomePage() {
 
         const hasActivityContext = Boolean(result?.meta?.has_activity_context);
         const suggestions = result?.realtime_recommendation?.suggestions || [];
+        const productById = new Map(products.map((item) => [Number(item.id), item]));
         const activityBased = hasActivityContext
-          ? suggestions.map((entry) => entry?.product).filter(Boolean).slice(0, 8)
+          ? suggestions
+            .map((entry) => {
+              const rec = entry?.product || {};
+              const fallback = productById.get(Number(rec.id)) || {};
+              return {
+                ...fallback,
+                ...rec,
+                image_path: rec?.image_path || fallback?.image_path || null,
+              };
+            })
+            .filter((item) => Number(item?.id || 0) > 0)
+            .slice(0, 8)
           : [];
         if (active) setActivityRecommendations(activityBased);
       } catch (err) {
@@ -207,8 +219,11 @@ export default function HomePage() {
           };
           const data = await postIntelligencePipeline(payload, token);
           const optimized = data?.bundle_optimization || {};
+          const productById = new Map(filteredProducts.map((item) => [Number(item.id), item]));
           const normalizedBundle = (optimized.bundle || []).map((item) => ({
+            ...(productById.get(Number(item?.id || 0)) || {}),
             ...item,
+            image_path: item?.image_path || productById.get(Number(item?.id || 0))?.image_path || null,
             qty: Number(item.qty || 1),
           }));
           return {
@@ -222,7 +237,19 @@ export default function HomePage() {
           };
         })
       );
-      setBundleScenarios(results);
+      const tierOrder = [
+        { key: 'starter', label: 'Starter' },
+        { key: 'balanced', label: 'Balanced' },
+        { key: 'max', label: 'Max Value' },
+      ];
+      const normalizedTiers = [...results]
+        .sort((a, b) => Number(a.total || 0) - Number(b.total || 0))
+        .map((item, idx) => ({
+          ...item,
+          key: tierOrder[idx]?.key || item.key,
+          label: tierOrder[idx]?.label || item.label,
+        }));
+      setBundleScenarios(normalizedTiers);
 
       await postActivity({ event_type: 'search', search_query: `${goal} @ ${budget}`, weight_score: 1 }, token);
     } catch (err) {
@@ -284,7 +311,7 @@ export default function HomePage() {
             loadingProducts={loadingProducts}
             error={error}
             bundleScenarios={bundleScenarios}
-            addToCart={addToCart}
+            addBundleToCart={addBundleToCart}
           />
         )}
 

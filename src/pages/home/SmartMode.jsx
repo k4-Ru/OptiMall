@@ -28,7 +28,7 @@ export default function SmartMode({
   loadingProducts,
   error,
   bundleScenarios,
-  addToCart,
+  addBundleToCart,
 }) {
   const navigate = useNavigate();
   const { isSignedIn, getToken } = useAuth();
@@ -188,8 +188,11 @@ export default function SmartMode({
   }
 
   async function handleCheckout() {
-    customizedBundle.forEach((item) => {
-      addToCart(item, Number(item.qty || 1));
+    const bundleName = `${goal || 'Smart'} - ${selectedScenario?.label || 'Bundle'}`;
+    addBundleToCart(customizedBundle, {
+      name: bundleName,
+      total: customizedTotals.total,
+      scenarioKey: selectedScenario?.key || null,
     });
     if (isSignedIn && selectedScenario && customizedBundle.length) {
       try {

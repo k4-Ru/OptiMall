@@ -10,7 +10,7 @@ function formatPrice(value) {
 
 export default function ProductsPage() {
   const { isSignedIn, getToken } = useAuth();
-  const { addToCart } = useCommerce();
+  const { addToCart, addBundleToCart } = useCommerce();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -109,6 +109,13 @@ export default function ProductsPage() {
           <p className="mt-1 text-xs text-slate-600">
             Total: <span className="font-semibold text-[#FF6B00]">{formatPrice(bundleResult.total_cost)}</span> • Remaining: {formatPrice(bundleResult.remaining_budget)} • Items: {(bundleResult.bundle || []).length}
           </p>
+          <button
+            type="button"
+            onClick={() => addBundleToCart(bundleResult.bundle || [], { name: 'Budget Bundle', total: bundleResult.total_cost })}
+            className="mt-3 rounded bg-slate-900 px-3 py-1.5 text-xs font-bold text-white"
+          >
+            Add Whole Bundle
+          </button>
           <div className="mt-3 space-y-2">
             {(bundleResult.bundle || []).map((item) => (
               <div key={item.id} className="flex items-center justify-between rounded border border-orange-200 bg-white px-3 py-2">
@@ -127,6 +134,7 @@ export default function ProductsPage() {
               <tr className="border-b text-left text-slate-500">
                 <th className="py-2 pr-4">Name</th>
                 <th className="py-2 pr-4">Category</th>
+                <th className="py-2 pr-4">Seller</th>
                 <th className="py-2 pr-4">Price</th>
                 <th className="py-2 pr-4">Stock</th>
                 <th className="py-2 pr-4">Action</th>
@@ -137,6 +145,9 @@ export default function ProductsPage() {
                 <tr key={product.id} className="border-b last:border-b-0">
                   <td className="py-2 pr-4">{product.name}</td>
                   <td className="py-2 pr-4">{product.category || '-'}</td>
+                  <td className="py-2 pr-4">
+                    {product.seller_name || product.store_name || product.brand || (product.seller_id ? `Seller #${product.seller_id}` : '-')}
+                  </td>
                   <td className="py-2 pr-4">{formatPrice(product.price)}</td>
                   <td className="py-2 pr-4">{product.stock ?? '-'}</td>
                   <td className="py-2 pr-4">
