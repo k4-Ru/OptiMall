@@ -1,12 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronRight,
+  MapPin,
+  Package,
+  ShieldCheck,
+  ShoppingCart,
+  Star,
+  Store,
+  Zap,
+} from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { getProducts, postIntelligencePipeline } from '../lib/api';
 import { useCommerce } from '../lib/commerceContext';
 
 function formatPrice(value) {
-  return `₱${Number(value || 0).toLocaleString()}`;
+  return `\u20B1${Number(value || 0).toLocaleString()}`;
 }
 
 function parseTags(raw) {
@@ -25,6 +37,26 @@ const TIERS = [
   { key: 'balanced', label: 'Balanced Tier', mult: 2.0 },
   { key: 'max', label: 'Max Value Tier', mult: 3.0 },
 ];
+
+function RatingStars({ value = 0, tone = 'brand', label }) {
+  const rating = Number(value || 0);
+  const activeColor = tone === 'seller' ? 'text-yellow-400' : 'text-[#FF6B00]';
+
+  return (
+    <div className="flex items-center gap-1">
+      {label && <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</span>}
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={`${label || 'rating'}-${star}`}
+          className={`h-3.5 w-3.5 ${rating >= star ? activeColor : 'text-slate-300'}`}
+          fill="currentColor"
+          strokeWidth={0}
+        />
+      ))}
+      <span className="ml-1 text-xs font-extrabold text-slate-700">{rating ? rating.toFixed(1) : 'N/A'}</span>
+    </div>
+  );
+}
 
 export default function ProductDetailPage() {
   const { id } = useParams();
@@ -66,11 +98,17 @@ export default function ProductDetailPage() {
       product?.brand ||
       'OptiMall Verified Seller'
   );
+  const sellerLocation = product?.seller_location || null;
+  const sellerRating = product?.seller_rating ? Number(product.seller_rating) : null;
   const productTags = useMemo(() => parseTags(product?.tags), [product?.tags]);
   const productTagVector = useMemo(() => parseTags(product?.tag_vector), [product?.tag_vector]);
   const effectiveTags = useMemo(
     () => (productTagVector.length ? productTagVector : productTags),
     [productTagVector, productTags]
+  );
+  const productsById = useMemo(
+    () => new Map(products.map((item) => [Number(item.id), item])),
+    [products]
   );
 
   const pairsWellWith = useMemo(() => {
@@ -168,52 +206,111 @@ export default function ProductDetailPage() {
     };
   }, [product, products, isSignedIn, getToken]);
 
+  function addBundleToCart(bundle = []) {
+    bundle.forEach((item) => addToCart(item, 1));
+  }
+
+  function getBundleImage(item) {
+    return item?.image_path || productsById.get(Number(item?.id))?.image_path || '';
+  }
+
   return (
     <div className="min-h-screen bg-[#EDF1F6] font-sans pb-12">
       <Header />
-      <main className="mx-auto max-w-[1280px] px-6 py-8">
-        {loading && <p className="text-slate-600">Loading product...</p>}
-        {!!error && <p className="text-red-600">{error}</p>}
-        {!loading && !product && <p className="text-slate-600">Product not found.</p>}
+      <main className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6 lg:py-8">
+        {loading && <p className="rounded-lg bg-white p-4 text-slate-600">Loading product...</p>}
+        {!!error && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</p>}
+        {!loading && !product && <p className="rounded-lg bg-white p-4 text-slate-600">Product not found.</p>}
 
         {!loading && product && (
-          <>
-            <section className="rounded-2xl bg-[#1A2A54] p-5 text-white sm:p-7">
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                className="rounded-full border border-white/35 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.1em] text-white hover:bg-white/10"
-              >
-                Back
-              </button>
-              <p className="mt-4 text-xs font-semibold tracking-[0.2em] text-[#B8C7EB]">PRODUCT VIEW</p>
-              <h1 className="mt-2 text-2xl font-black sm:text-3xl">{product.name}</h1>
-              <p className="mt-1 text-sm text-[#D8E3FA]">{product.category || 'Uncategorized'}</p>
-            </section>
+          <div className="space-y-6">
+            <section className="overflow-hidden rounded-lg border border-[#d5dded] bg-white shadow-sm">
+              <div className="bg-[#1A2A54] px-4 py-4 text-white sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-white transition hover:bg-white/15"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back
+                </button>
+              </div>
 
-            <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-4 sm:p-6">
-              <div className="grid gap-5 md:grid-cols-[260px_1fr]">
-                <div className="flex h-64 items-center justify-center rounded-xl bg-[#f8fbff]">
-                  {product.image_path ? (
-                    <img src={product.image_path} alt={product.name} className="max-h-full max-w-full object-contain" />
-                  ) : (
-                    <div className="text-xs font-semibold text-slate-400">No Image</div>
-                  )}
-                </div>
-                <div className="flex min-h-[256px] flex-col">
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Price</p>
-                  <p className="text-4xl font-black text-[var(--brand)]">{formatPrice(product.price)}</p>
-                  <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
-                    <p className="rounded-lg bg-[#f8fbff] px-3 py-2"><span className="font-semibold text-slate-500">Stock:</span> {product.stock ?? '-'}</p>
-                    <p className="rounded-lg bg-[#f8fbff] px-3 py-2"><span className="font-semibold text-slate-500">Seller:</span> {sellerName}</p>
+              <div className="grid gap-0 lg:grid-cols-[minmax(330px,42%)_1fr]">
+                <div className="border-b border-[#d5dded] bg-[#f8fbff] p-4 sm:p-6 lg:border-b-0 lg:border-r">
+                  <div className="flex min-h-[320px] items-center justify-center rounded-lg border border-[#d5dded] bg-white p-6 sm:min-h-[420px]">
+                    {product.image_path ? (
+                      <img src={product.image_path} alt={product.name} className="max-h-[360px] w-full object-contain" />
+                    ) : (
+                      <div className="flex h-40 w-40 items-center justify-center rounded-lg border border-dashed border-[#d5dded] text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+                        No Image
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                </div>
+
+                <div className="flex flex-col p-4 sm:p-6 lg:p-8">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-[#EDF1F6] px-3 py-1 text-xs font-extrabold uppercase tracking-[0.12em] text-[#1A2A54]">
+                      {product.category || 'Uncategorized'}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#d5dded] px-3 py-1 text-xs font-bold text-slate-600">
+                      <Package className="h-3.5 w-3.5" />
+                      {product.stock ?? '-'} in stock
+                    </span>
+                  </div>
+
+                  <h1 className="mt-4 text-2xl font-black leading-tight text-slate-950 sm:text-3xl lg:text-4xl">{product.name}</h1>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+                    <RatingStars value={product.rating} label="Product" />
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500">
+                      <ShieldCheck className="h-4 w-4 text-[#1A2A54]" />
+                      Verified product
+                    </span>
+                  </div>
+
+                  <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <div>
+                      <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">Price</p>
+                      <p className="mt-1 text-4xl font-black text-[#FF6B00] sm:text-5xl">{formatPrice(product.price)}</p>
+                    </div>
+                    <Link
+                      to="/cart"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#d5dded] bg-white px-4 text-sm font-extrabold text-[#1A2A54] transition hover:bg-[#f8fbff]"
+                    >
+                      View Cart
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
+                  </div>
+
+                  <div className="mt-6 rounded-lg border border-[#d5dded] bg-[#f8fbff] p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#1A2A54] text-base font-black text-white">
+                        <Store className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-extrabold text-slate-950">{sellerName}</p>
+                            <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-slate-500">
+                              <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                              {sellerLocation || 'Philippines'}
+                            </p>
+                          </div>
+                          <RatingStars value={sellerRating} tone="seller" label="Seller" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => addToCart(product, 1)}
-                      className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-bold text-white hover:bg-[var(--brand-strong)]"
+                      className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#FF6B00] px-5 text-sm font-extrabold text-white transition hover:bg-[#e65c00]"
                     >
-                      Add Product to Cart
+                      <ShoppingCart className="h-4 w-4" />
+                      Add to Cart
                     </button>
                     <button
                       type="button"
@@ -221,108 +318,145 @@ export default function ProductDetailPage() {
                         addToCart(product, 1);
                         navigate('/cart');
                       }}
-                      className="rounded-lg bg-[#1A2A54] px-4 py-2 text-sm font-bold text-white hover:bg-[#142042]"
+                      className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#1A2A54] px-5 text-sm font-extrabold text-white transition hover:bg-[#142042]"
                     >
-                      Buy now
+                      <Zap className="h-4 w-4" />
+                      Buy Now
                     </button>
-                    <Link
-                      to="/cart"
-                      className="rounded-lg border border-[#d5dded] bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-[#f8fbff]"
-                    >
-                      Go to Cart
-                    </Link>
                   </div>
                 </div>
               </div>
             </section>
 
-            <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
-              <h2 className="text-lg font-extrabold text-slate-900">Bundle Scenarios by Budget</h2>
-              <p className="mt-1 text-sm text-slate-600">Compare tiers and add items directly from each generated bundle.</p>
-              {!isSignedIn && <p className="mt-2 text-sm text-slate-500">Sign in to generate bundle scenarios.</p>}
-              {loadingBundles && <p className="mt-2 text-sm text-slate-500">Generating scenarios...</p>}
+            <section className="rounded-lg border border-[#d5dded] bg-white p-4 shadow-sm sm:p-6">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-950">Bundle Scenarios by Budget</h2>
+                  <p className="mt-1 text-sm text-slate-600">Compare tiers and add items directly from each generated bundle.</p>
+                </div>
+                {loadingBundles && <span className="text-sm font-bold text-slate-500">Generating scenarios...</span>}
+              </div>
+              {!isSignedIn && <p className="mt-4 rounded-lg bg-[#f8fbff] px-3 py-2 text-sm text-slate-500">Sign in to generate bundle scenarios.</p>}
               {isSignedIn && !loadingBundles && (
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
                   {bundleSets.map((tier) => (
-                    <article key={tier.key} className="rounded-xl border border-[#d5dded] bg-[#fdfefe] p-4">
-                      <p className="text-xs font-semibold text-slate-500">{tier.label}</p>
-                      <p className="mt-1 text-lg font-extrabold text-[var(--primary)]">{formatPrice(tier.budget)}</p>
-                      <p className="text-xs text-slate-500">Bundle: {formatPrice(tier.total)} • Remaining: {formatPrice(tier.remaining)}</p>
-                      <div className="mt-3 space-y-2">
+                    <article key={tier.key} className="flex flex-col rounded-lg border border-[#d5dded] bg-[#fcfdff] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">{tier.label}</p>
+                          <p className="mt-1 text-xl font-black text-[#1A2A54]">{formatPrice(tier.budget)}</p>
+                        </div>
+                        <span className="rounded-full bg-[#fff3e8] px-2 py-1 text-[11px] font-black text-[#FF6B00]">
+                          {formatPrice(tier.remaining)} left
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs font-semibold text-slate-500">Bundle total: {formatPrice(tier.total)}</p>
+                      <div className="mt-4 flex-1 space-y-2">
                         {tier.bundle.slice(0, 4).map((item) => (
-                          <div key={`${tier.key}-${item.id}`} className="flex items-center justify-between gap-2 rounded border border-[#d5dded] bg-white px-2 py-1.5">
-                            <span className="truncate text-xs font-semibold text-slate-700">{item.name}</span>
-                            <button type="button" onClick={() => addToCart(item, 1)} className="rounded bg-[#1A2A54] px-2 py-1 text-[10px] font-bold text-white">
+                          <div key={`${tier.key}-${item.id}`} className="flex min-h-14 items-center justify-between gap-3 rounded-lg border border-[#d5dded] bg-white px-2.5 py-2">
+                            {getBundleImage(item) ? (
+                              <img
+                                src={getBundleImage(item)}
+                                alt={item.name}
+                                className="h-10 w-10 shrink-0 rounded-md border border-[#d5dded] bg-[#f8fbff] object-contain p-1"
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-[#d5dded] bg-[#f8fbff] text-[9px] font-black text-slate-400">
+                                N/A
+                              </div>
+                            )}
+                            <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-700">{item.name}</span>
+                            <button type="button" onClick={() => addToCart(item, 1)} className="shrink-0 rounded-lg bg-[#1A2A54] px-3 py-1.5 text-[10px] font-black uppercase text-white">
                               Add
                             </button>
                           </div>
                         ))}
                         {!tier.bundle.length && <p className="text-xs text-slate-400">No items for this tier.</p>}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => addBundleToCart(tier.bundle)}
+                        disabled={!tier.bundle.length}
+                        className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#FF6B00] px-4 text-xs font-black uppercase tracking-[0.08em] text-white transition hover:bg-[#e65c00] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <ShoppingCart className="h-4 w-4" />
+                        Add Bundle to Cart
+                      </button>
                     </article>
                   ))}
                 </div>
               )}
             </section>
 
-            <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
-              <h2 className="text-lg font-extrabold text-slate-900">Pairs Well With</h2>
-              <p className="mt-1 text-sm text-slate-600">Complementary picks based on category, tags, and bundle compatibility.</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {pairsWellWith.map((item) => (
-                  <article key={`pair-${item.id}`} className="rounded-xl border border-[#d5dded] bg-[#fcfdff] p-3">
-                    <div className="flex items-center gap-3">
-                      {item.image_path ? (
-                        <img src={item.image_path} alt={item.name} className="h-14 w-14 rounded border border-[#d5dded] bg-white object-contain p-1" />
-                      ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded border border-[#d5dded] bg-white text-[10px] font-bold text-slate-400">N/A</div>
-                      )}
-                      <div className="min-w-0">
-                        <Link to={`/products/${item.id}`} className="block line-clamp-2 text-sm font-bold text-slate-800">{item.name}</Link>
-                        <p className="text-xs font-semibold text-[#FF6B00]">{formatPrice(item.price)}</p>
+            <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-lg border border-[#d5dded] bg-white p-4 shadow-sm sm:p-6">
+                <h2 className="text-lg font-extrabold text-slate-950">Pairs Well With</h2>
+                <p className="mt-1 text-sm text-slate-600">Complementary picks based on category, tags, and bundle compatibility.</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {pairsWellWith.map((item) => (
+                    <article key={`pair-${item.id}`} className="rounded-lg border border-[#d5dded] bg-[#fcfdff] p-3">
+                      <div className="flex items-center gap-3">
+                        {item.image_path ? (
+                          <img src={item.image_path} alt={item.name} className="h-16 w-16 shrink-0 rounded-lg border border-[#d5dded] bg-white object-contain p-1" />
+                        ) : (
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-[#d5dded] bg-white text-[10px] font-bold text-slate-400">N/A</div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <Link to={`/products/${item.id}`} className="block line-clamp-2 text-sm font-extrabold leading-snug text-slate-800 hover:text-[#1A2A54]">
+                            {item.name}
+                          </Link>
+                          <p className="mt-1 text-sm font-black text-[#FF6B00]">{formatPrice(item.price)}</p>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  ))}
+                </div>
               </div>
-            </section>
 
-            <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
-              <h2 className="text-lg font-extrabold text-slate-900">Budget Completion Suggestions</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                You still have <span className="font-bold text-[#1A2A54]">{formatPrice(budgetCompletionSuggestions.remaining)}</span> remaining in the balanced tier.
-              </p>
-              <div className="mt-3 space-y-2">
-                {budgetCompletionSuggestions.items.map((item) => (
-                  <div key={`budget-${item.id}`} className="flex items-center justify-between rounded-lg border border-[#d5dded] bg-[#f8fbff] px-3 py-2">
-                    <Link to={`/products/${item.id}`} className="text-sm font-semibold text-slate-800">{item.name}</Link>
-                    <span className="text-xs font-bold text-[#FF6B00]">{formatPrice(item.price)}</span>
+              <div className="space-y-6">
+                <section className="rounded-lg border border-[#d5dded] bg-white p-4 shadow-sm sm:p-6">
+                  <h2 className="text-lg font-extrabold text-slate-950">Budget Completion</h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    You still have <span className="font-black text-[#1A2A54]">{formatPrice(budgetCompletionSuggestions.remaining)}</span> remaining in the balanced tier.
+                  </p>
+                  <div className="mt-4 space-y-2">
+                    {budgetCompletionSuggestions.items.map((item) => (
+                      <div key={`budget-${item.id}`} className="flex items-center justify-between gap-3 rounded-lg border border-[#d5dded] bg-[#f8fbff] px-3 py-2">
+                        <Link to={`/products/${item.id}`} className="min-w-0 truncate text-sm font-bold text-slate-800">{item.name}</Link>
+                        <span className="shrink-0 text-xs font-black text-[#FF6B00]">{formatPrice(item.price)}</span>
+                      </div>
+                    ))}
+                    {!budgetCompletionSuggestions.items.length && (
+                      <p className="rounded-lg bg-[#f8fbff] px-3 py-2 text-sm text-slate-500">No additional suggestions fit the remaining budget yet.</p>
+                    )}
                   </div>
-                ))}
-                {!budgetCompletionSuggestions.items.length && (
-                  <p className="text-sm text-slate-500">No additional suggestions fit the remaining budget yet.</p>
-                )}
+                </section>
+
+                <section className="rounded-lg border border-[#d5dded] bg-white p-4 shadow-sm sm:p-6">
+                  <h2 className="text-lg font-extrabold text-slate-950">Why Recommended</h2>
+                  <div className="mt-3 space-y-2">
+                    {explanationLines.map((line, idx) => (
+                      <p key={`exp-${idx}`} className="flex items-start gap-2 rounded-lg bg-[#f8fbff] px-3 py-2 text-sm text-slate-700">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#FF6B00]" />
+                        <span>{line}</span>
+                      </p>
+                    ))}
+                  </div>
+                </section>
               </div>
             </section>
 
-            <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
-              <h2 className="text-lg font-extrabold text-slate-900">Why This Was Recommended</h2>
-              <div className="mt-3 space-y-2">
-                {explanationLines.map((line, idx) => (
-                  <p key={`exp-${idx}`} className="rounded-lg bg-[#f8fbff] px-3 py-2 text-sm text-slate-700">✓ {line}</p>
-                ))}
+            <section className="rounded-lg border border-[#d5dded] bg-white p-4 shadow-sm sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-extrabold text-slate-950">Reviews</h2>
+                <RatingStars value={product.rating} label="Rating" />
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <p className="rounded-lg bg-[#f8fbff] px-3 py-3 text-sm text-slate-700">"Great value for the price and works well with setup bundles."</p>
+                <p className="rounded-lg bg-[#f8fbff] px-3 py-3 text-sm text-slate-700">"Delivery was fast and quality is solid for daily use."</p>
               </div>
             </section>
-
-            <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
-              <h2 className="text-lg font-extrabold text-slate-900">Reviews</h2>
-              <p className="mt-1 text-sm text-slate-600">Rating: <span className="font-bold text-slate-900">{Number(product.rating || 0).toFixed(1)} / 5</span></p>
-              <div className="mt-3 space-y-2 text-sm text-slate-700">
-                <p className="rounded-lg bg-[#f8fbff] px-3 py-2">“Great value for the price and works well with setup bundles.”</p>
-                <p className="rounded-lg bg-[#f8fbff] px-3 py-2">“Delivery was fast and quality is solid for daily use.”</p>
-              </div>
-            </section>
-          </>
+          </div>
         )}
       </main>
     </div>

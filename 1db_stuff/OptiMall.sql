@@ -174,6 +174,7 @@ INSERT INTO `products` (`id`, `seller_id`, `name`, `category`, `price`, `rating`
 (191, 17, 'Travel Neck Pillow', 'Travel', 399.00, 4.5, 130, '[\"travel\",\"comfort\",\"pillow\"]', NULL),
 (192, 17, 'Packing Cubes Set', 'Travel', 599.00, 4.6, 120, '[\"travel\",\"packing\",\"organizer\"]', NULL),
 (193, 17, 'Universal Travel Adapter', 'Travel', 799.00, 4.7, 80, '[\"travel\",\"adapter\",\"charger\"]', NULL),
+
 (194, 17, 'Anti-Theft Sling Bag', 'Travel', 1099.00, 4.5, 70, '[\"travel\",\"bag\",\"security\"]', NULL),
 (195, 17, 'Digital Luggage Scale', 'Travel', 499.00, 4.4, 95, '[\"travel\",\"luggage\",\"scale\"]', NULL),
 (196, 17, 'Rainproof Backpack Cover', 'Travel', 299.00, 4.3, 140, '[\"travel\",\"rain\",\"bag\"]', NULL),
