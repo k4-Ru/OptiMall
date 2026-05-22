@@ -7,16 +7,68 @@ function formatPrice(value) {
 }
 
 function productImage(product) {
-  const raw = String(product?.image_path || product?.image || '').trim();
-  if (!raw) return '';
-  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) return raw;
-  return `/${raw}`;
+  const rawInput = String(product?.image_path || product?.image || '').trim();
+  if (!rawInput) {
+    return product?.id ? `/images/${product.id}.png` : '';
+  }
+
+  const normalized = rawInput
+    .replaceAll('\\', '/')
+    .replace(/^\.\/+/, '')
+    .replace(/^public\//i, '')
+    .trim();
+
+  if (!normalized) return product?.id ? `/images/${product.id}.png` : '';
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized;
+  if (normalized.startsWith('/')) return normalized;
+  return `/${normalized}`;
+}
+
+function ImageWithFallback({ product, alt, className, placeholderClassName }) {
+  const id = Number(product?.id || 0);
+  const primary = productImage(product);
+  const fallbacks = [
+    primary,
+    id ? `/images/${id}.png` : '',
+    id ? `/product-images/${id}.png` : '',
+  ].filter(Boolean);
+
+  if (!fallbacks.length) {
+    return <div className={placeholderClassName}>No image</div>;
+  }
+
+  return (
+    <>
+      <img
+        src={fallbacks[0]}
+        alt={alt}
+        className={className}
+        onError={(event) => {
+          const current = event.currentTarget;
+          const nextIndex = Number(current.dataset.fallbackIndex || 0) + 1;
+          if (nextIndex < fallbacks.length) {
+            current.dataset.fallbackIndex = String(nextIndex);
+            current.src = fallbacks[nextIndex];
+            return;
+          }
+          current.classList.add('hidden');
+          const placeholder = current.nextElementSibling;
+          if (placeholder) placeholder.classList.remove('hidden');
+        }}
+      />
+      <div className={`${placeholderClassName} hidden`}>No image</div>
+    </>
+  );
 }
 
 export default function NormalMode({
   isSignedIn,
   searchQuery,
   setSearchQuery,
+  onSubmitSearch,
+  activeSearchTerm,
+  searchResults,
+  searchLoading,
   categoryFilter,
   setCategoryFilter,
   categories,
@@ -26,8 +78,11 @@ export default function NormalMode({
   loadingRecommendations,
   recommendationError,
   recommendationMeta,
+  debugReco,
   recommendedProducts,
+  popularBundles,
   addToCart,
+  addBundleToCart,
   filteredProducts,
   loadingProducts,
 }) {
@@ -115,6 +170,12 @@ export default function NormalMode({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onSubmitSearch?.(searchQuery);
+            }
+          }}
           placeholder="Search products, categories, bundles"
           className="opti-focus-ring w-full rounded-xl border border-[#d5dded] bg-white py-3 pl-10 pr-4 transition-all duration-200 ease-out focus:border-[#aebdd9]"
         />
@@ -145,7 +206,7 @@ export default function NormalMode({
         </select>
       </div>
 
-{(!searchQuery.trim() && categoryFilter === 'all' && hasActivityRecommendations) && (
+{(!activeSearchTerm && categoryFilter === 'all' && hasActivityRecommendations) && (
   <>
     <h2 className="text-lg font-extrabold text-slate-900">Recommended for you</h2>
     <p className="-mt-1 text-sm text-slate-600">
@@ -170,14 +231,29 @@ export default function NormalMode({
       ))}
       {recommendedProducts.map((product) => (
         <article key={`rec-${product.id}`} className="opti-enter-soft flex w-[160px] shrink-0 flex-col rounded-xl border border-[#d5dded] bg-white p-3 sm:w-[180px]">
-          {productImage(product) ? (
-            <img src={productImage(product)} alt={product.name} className="h-28 w-full rounded-lg object-contain bg-[#f8fbff]" />
-          ) : (
-            <div className="flex h-28 items-center justify-center rounded-lg bg-[#f8fbff] text-xs text-slate-400">No image</div>
-          )}
+          <ImageWithFallback
+            product={product}
+            alt={product.name}
+            className="h-28 w-full rounded-lg object-contain bg-[#f8fbff]"
+            placeholderClassName="flex h-28 items-center justify-center rounded-lg bg-[#f8fbff] text-xs text-slate-400"
+          />
           <Link to={`/products/${product.id}`} className="mt-2 block line-clamp-2 text-sm font-bold text-slate-900">{product.name}</Link>
           <p className="mt-1 text-xs text-slate-500">{product.category || 'General'}</p>
+          {!!product?._reason_chips?.length && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {product._reason_chips.map((reason) => (
+                <span key={`${product.id}-${reason}`} className="rounded-full bg-[#edf3fb] px-2 py-0.5 text-[10px] font-semibold text-[#1A2A54]">
+                  {reason}
+                </span>
+              ))}
+            </div>
+          )}
           <p className="mt-1 text-sm font-extrabold text-[#FF6B00]">{formatPrice(product.price)}</p>
+          {debugReco && (
+            <p className="mt-1 text-[10px] text-slate-500">
+              h={Number(product._debug_score || 0).toFixed(3)} m={Number(product._debug_model_score || 0).toFixed(3)} b={Number(product._debug_blended_score || 0).toFixed(3)}
+            </p>
+          )}
           <button
             type="button"
             onClick={() => addToCart(product, 1)}
@@ -188,6 +264,81 @@ export default function NormalMode({
         </article>
       ))}
     </div>
+    {debugReco && (
+      <div className="rounded-lg border border-dashed border-[#c8d5ec] bg-[#f8fbff] px-3 py-2 text-left text-[11px] text-slate-600">
+        <p>Debug: variant={recommendationMeta?.experiment?.variant || '-'} strategy={recommendationMeta?.strategy || '-'} model={recommendationMeta?.active_model?.model_version || '-'}</p>
+      </div>
+    )}
+  </>
+)}
+
+{(!activeSearchTerm && categoryFilter === 'all' && Array.isArray(popularBundles) && popularBundles.length > 0) && (
+  <>
+    <h2 className="text-lg font-extrabold text-slate-900">Popular bundles</h2>
+    <p className="-mt-1 text-sm text-slate-600">Frequently saved bundles from shopper checkouts.</p>
+    <div className="opti-enter-soft opti-stagger-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {popularBundles.map((bundle) => (
+        <article key={`popular-bundle-${bundle.id}`} className="rounded-xl border border-[#d5dded] bg-white p-3 text-left">
+          <div className="flex items-start justify-between gap-2">
+            <p className="line-clamp-2 text-sm font-bold text-slate-900">{bundle.name}</p>
+            <span className="shrink-0 rounded-full bg-[#edf3fb] px-2 py-0.5 text-[10px] font-semibold text-[#1A2A54]">
+              {Number(bundle.times_saved || 0)} saves
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">{formatPrice(bundle.estimated_total_price)} - {Number(bundle.item_count || 0)} items</p>
+          <div className="mt-2 flex -space-x-2">
+            {(bundle.items || []).slice(0, 4).map((item) => (
+              <div key={`${bundle.id}-${item.id}`} className="h-10 w-10 overflow-hidden rounded-full border border-white bg-[#f8fbff]">
+                <ImageWithFallback
+                  product={item}
+                  alt={item.name}
+                  className="h-full w-full object-contain"
+                  placeholderClassName="flex h-full w-full items-center justify-center text-[9px] text-slate-400"
+                />
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => addBundleToCart(bundle.items || [], { name: bundle.name, total: bundle.estimated_total_price, scenarioKey: `popular_${bundle.id}` })}
+            className="opti-press mt-3 w-full rounded bg-[#1A2A54] px-2 py-1.5 text-xs font-bold text-white hover:bg-[#233a74]"
+          >
+            Add bundle to cart
+          </button>
+        </article>
+      ))}
+    </div>
+  </>
+)}
+
+{(!!activeSearchTerm || searchLoading) && (
+  <>
+    <h2 className="text-lg font-extrabold text-slate-900">Search results</h2>
+    <p className="-mt-1 text-sm text-slate-600">Matches for "{activeSearchTerm || searchQuery.trim()}".</p>
+    {searchLoading && <p className="text-xs text-slate-500">Searching products...</p>}
+    {!searchLoading && Array.isArray(searchResults) && searchResults.length === 0 && (
+      <p className="text-sm text-slate-500">No matches found.</p>
+    )}
+    {!searchLoading && Array.isArray(searchResults) && searchResults.length > 0 && (
+      <div className="opti-enter-soft grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        {searchResults.slice(0, 30).map((product) => (
+          <Link
+            key={`search-${product.id}`}
+            to={`/products/${product.id}`}
+            className="opti-press group flex min-h-[184px] flex-col rounded-xl border border-[#d5dded] bg-white p-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#c0cce2] hover:shadow-sm active:translate-y-0"
+          >
+            <ImageWithFallback
+              product={product}
+              alt={product.name}
+              className="h-24 w-full rounded object-contain bg-[#f8fbff] transition-transform duration-200 group-hover:scale-[1.02]"
+              placeholderClassName="flex h-24 items-center justify-center rounded bg-[#f8fbff] text-xs text-slate-400"
+            />
+            <p className="mt-2 line-clamp-2 text-xs font-bold text-slate-900 group-hover:text-[#1A2A54]">{product.name}</p>
+            <p className="mt-auto text-[11px] font-extrabold text-[#FF6B00]">{formatPrice(product.price)}</p>
+          </Link>
+        ))}
+      </div>
+    )}
   </>
 )}
 
@@ -207,11 +358,12 @@ export default function NormalMode({
             to={`/products/${product.id}`}
             className="opti-press group flex min-h-[184px] flex-col rounded-xl border border-[#d5dded] bg-white p-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#c0cce2] hover:shadow-sm active:translate-y-0"
           >
-            {productImage(product) ? (
-              <img src={productImage(product)} alt={product.name} className="h-24 w-full rounded object-contain bg-[#f8fbff] transition-transform duration-200 group-hover:scale-[1.02]" />
-            ) : (
-              <div className="flex h-24 items-center justify-center rounded bg-[#f8fbff] text-xs text-slate-400">No image</div>
-            )}
+            <ImageWithFallback
+              product={product}
+              alt={product.name}
+              className="h-24 w-full rounded object-contain bg-[#f8fbff] transition-transform duration-200 group-hover:scale-[1.02]"
+              placeholderClassName="flex h-24 items-center justify-center rounded bg-[#f8fbff] text-xs text-slate-400"
+            />
             <p className="mt-2 line-clamp-2 text-xs font-bold text-slate-900 group-hover:text-[#1A2A54]">{product.name}</p>
             <p className="mt-auto text-[11px] font-extrabold text-[#FF6B00]">{formatPrice(product.price)}</p>
           </Link>

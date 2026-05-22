@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import Header from '../components/Header';
 import { useCommerce } from '../lib/commerceContext';
+import { postCheckout } from '../lib/api';
 import {
   ArrowLeft,
   ShoppingBag,
@@ -21,7 +23,10 @@ function formatPrice(value) {
 export default function CartPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEntryId, setSelectedEntryId] = useState('__all__');
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
   const navigate = useNavigate();
+  const { isSignedIn, getToken } = useAuth();
   const { cart, cartCount, cartTotal, updateQty, removeFromCart, checkoutSelection } = useCommerce();
 
   const selectedEntry = useMemo(() => {
@@ -39,9 +44,56 @@ export default function CartPage() {
     return { subtotal, serviceFee, simulatedDiscount, grandTotal };
   }, [cartTotal, selectedEntry]);
 
-  function handleCheckout() {
-    const order = checkoutSelection(selectedEntry?.id || '__all__');
-    if (order) navigate(`/orders/${order.id}`);
+  function buildCheckoutItems() {
+    const sourceEntries = selectedEntry ? [selectedEntry] : cart;
+    const items = [];
+    for (const entry of sourceEntries) {
+      if (entry?.entry_type === 'bundle' && Array.isArray(entry.bundle_items) && entry.bundle_items.length) {
+        for (const bItem of entry.bundle_items) {
+          items.push({
+            product_id: Number(bItem.id || 0),
+            quantity: Math.max(1, Number(bItem.qty || 1)),
+            unit_price: Number(bItem.price || 0),
+          });
+        }
+      } else {
+        items.push({
+          product_id: Number(entry?.id || 0),
+          quantity: Math.max(1, Number(entry?.qty || 1)),
+          unit_price: Number(entry?.price || 0),
+        });
+      }
+    }
+    return items.filter((item) => item.product_id > 0 && item.unit_price >= 0);
+  }
+
+  async function handleCheckout() {
+    if (checkoutLoading) return;
+    setCheckoutError('');
+    try {
+      if (!isSignedIn) throw new Error('Sign in first to checkout.');
+      const token = await getToken();
+      if (!token) throw new Error('Missing auth token.');
+
+      const items = buildCheckoutItems();
+      if (!items.length) throw new Error('No valid items to checkout.');
+
+      setCheckoutLoading(true);
+      await postCheckout(
+        {
+          items,
+          status: 'paid',
+        },
+        token
+      );
+
+      const order = checkoutSelection(selectedEntry?.id || '__all__');
+      if (order) navigate(`/orders/${order.id}`);
+    } catch (err) {
+      setCheckoutError(err.message || 'Checkout failed.');
+    } finally {
+      setCheckoutLoading(false);
+    }
   }
 
   return (
@@ -243,11 +295,13 @@ export default function CartPage() {
               <button
                 type="button"
                 onClick={handleCheckout}
+                disabled={checkoutLoading}
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#FF6B00] py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-[#FF6B00]/25 transition duration-150 hover:bg-[#E65C00] active:scale-[0.98]"
               >
                 <CheckCircle2 className="h-4 w-4" />
-                Proceed to Checkout
+                {checkoutLoading ? 'Processing Checkout...' : 'Proceed to Checkout'}
               </button>
+              {!!checkoutError && <p className="mt-2 text-xs font-semibold text-red-600">{checkoutError}</p>}
             </aside>
           </section>
         )}

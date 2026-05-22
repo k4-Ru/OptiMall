@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import Header from '../components/Header';
-import { getProducts, postActivity, postIntelligencePipeline } from '../lib/api';
+import { getPopularBundles, getProducts, postActivity, postIntelligencePipeline } from '../lib/api';
 import { useCommerce } from '../lib/commerceContext';
 import NormalMode from './home/NormalMode';
 import SmartMode from './home/SmartMode';
@@ -30,6 +30,9 @@ export default function HomePage() {
 
   const [mode, setMode] = useState('normal');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [running, setRunning] = useState(false);
@@ -40,7 +43,16 @@ export default function HomePage() {
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [recommendationError, setRecommendationError] = useState('');
   const [recommendationMeta, setRecommendationMeta] = useState(null);
+  const [popularBundles, setPopularBundles] = useState([]);
   const [smartModeMeta, setSmartModeMeta] = useState(null);
+  const debugReco = useMemo(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('debugReco') === '1';
+    } catch {
+      return false;
+    }
+  }, []);
 
   const [goal, setGoal] = useState('');
   const [budget, setBudget] = useState(5000);
@@ -115,24 +127,15 @@ export default function HomePage() {
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    const key = searchQuery.trim().toLowerCase();
-    const searched = !key
-      ? products
-      : products.filter((product) => {
-        const name = String(product?.name || '').toLowerCase();
-        const category = String(product?.category || '').toLowerCase();
-        return name.includes(key) || category.includes(key);
-      });
-
     const byCategory = categoryFilter === 'all'
-      ? searched
-      : searched.filter((product) => String(product?.category || '').toLowerCase() === categoryFilter.toLowerCase());
+      ? products
+      : products.filter((product) => String(product?.category || '').toLowerCase() === categoryFilter.toLowerCase());
 
     if (sortBy === 'price_asc') return [...byCategory].sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
     if (sortBy === 'price_desc') return [...byCategory].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
     if (sortBy === 'newest') return [...byCategory].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
     return byCategory;
-  }, [products, searchQuery, categoryFilter, sortBy]);
+  }, [products, categoryFilter, sortBy]);
 
   const categories = useMemo(
     () => ['all', ...new Set(products.map((p) => String(p.category || '').trim()).filter(Boolean))],
@@ -176,10 +179,20 @@ export default function HomePage() {
             .map((entry) => {
               const rec = entry?.product || {};
               const fallback = productById.get(Number(rec.id)) || {};
+              const score = Number(entry?.realtime_score ?? entry?.model_score ?? 0);
+              const reasons = [];
+              if (Number(rec?.embedding_similarity || fallback?.embedding_similarity || 0) > 0.55) reasons.push('semantic match');
+              if (Number(rec?.outcome_boost || fallback?.outcome_boost || 0) > 0.35) reasons.push('activity match');
+              if (Number(rec?.popularity_score || fallback?.popularity_score || 0) >= 40) reasons.push('popular now');
+              if (Number(rec?.price || fallback?.price || 0) > 0 && Number(rec?.price || fallback?.price || 0) <= 1500) reasons.push('budget fit');
               return {
                 ...fallback,
                 ...rec,
                 image_path: rec?.image_path || fallback?.image_path || null,
+                _debug_score: score,
+                _debug_model_score: Number(entry?.model_score ?? 0),
+                _debug_blended_score: Number(entry?.blended_score ?? 0),
+                _reason_chips: reasons.slice(0, 2),
               };
             })
             .filter((item) => Number(item?.id || 0) > 0)
@@ -197,6 +210,61 @@ export default function HomePage() {
       active = false;
     };
   }, [isSignedIn, products, getToken]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPopularBundles() {
+      try {
+        const rows = await getPopularBundles(6);
+        if (active) setPopularBundles(Array.isArray(rows) ? rows : []);
+      } catch {
+        if (active) setPopularBundles([]);
+      }
+    }
+    loadPopularBundles();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const submitSearch = useCallback((rawTerm) => {
+    const term = String(rawTerm || '').trim();
+    if (!term) {
+      setSearchTerm('');
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchTerm(term);
+    window.setTimeout(async () => {
+      const key = term.toLowerCase();
+      const matches = products.filter((product) => {
+        const name = String(product?.name || '').toLowerCase();
+        const category = String(product?.category || '').toLowerCase();
+        const tags = String(product?.tags || '').toLowerCase();
+        return name.includes(key) || category.includes(key) || tags.includes(key);
+      });
+      setSearchResults(matches);
+      setSearchLoading(false);
+
+      if (isSignedIn) {
+        try {
+          const token = await getToken();
+          if (token) {
+            await postActivity({
+              event_type: 'search',
+              search_query: term,
+              weight_score: 1,
+            }, token);
+          }
+        } catch {
+          // non-blocking analytics write
+        }
+      }
+    }, 450);
+  }, [products, isSignedIn, getToken]);
 
   const runSmartMode = useCallback(async () => {
     setRunning(true);
@@ -287,6 +355,10 @@ export default function HomePage() {
             isSignedIn={isSignedIn}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            onSubmitSearch={submitSearch}
+            activeSearchTerm={searchTerm}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
             categoryFilter={categoryFilter}
             setCategoryFilter={setCategoryFilter}
             categories={categories}
@@ -296,8 +368,11 @@ export default function HomePage() {
             loadingRecommendations={loadingRecommendations}
             recommendationError={recommendationError}
             recommendationMeta={recommendationMeta}
+            debugReco={debugReco}
             recommendedProducts={recommendedProducts}
+            popularBundles={popularBundles}
             addToCart={addToCart}
+            addBundleToCart={addBundleToCart}
             filteredProducts={filteredProducts}
             loadingProducts={loadingProducts}
           />
@@ -320,6 +395,7 @@ export default function HomePage() {
             error={error}
             bundleScenarios={bundleScenarios}
             modelMeta={smartModeMeta}
+            debugReco={debugReco}
             addBundleToCart={addBundleToCart}
           />
         )}

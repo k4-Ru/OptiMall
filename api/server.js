@@ -841,6 +841,72 @@ async function safeWriteRecommendationOutcome(pool, payload) {
   }
 }
 
+async function diagnoseRecommendationOutcomeLink(pool, payload) {
+  const outcomeType = mapInteractionToOutcomeType(payload?.interaction_type);
+  const productId = Number(payload?.product_id || 0);
+  const userId = Number(payload?.user_id || 0);
+  if (!outcomeType) {
+    return { linked: false, reason: 'unsupported_interaction_type', outcome_type: null };
+  }
+  if (!userId) {
+    return { linked: false, reason: 'missing_user_id', outcome_type: outcomeType };
+  }
+  if (!productId) {
+    return { linked: false, reason: 'missing_product_id', outcome_type: outcomeType };
+  }
+
+  if (payload?.recommendation_request_id) {
+    const [rows] = await pool.query(
+      `SELECT id, request_id, created_at
+       FROM recommendation_exposures
+       WHERE request_id = ?
+         AND user_id = ?
+         AND product_id = ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [String(payload.recommendation_request_id), userId, productId]
+    );
+    if (!rows?.[0]?.id) {
+      return {
+        linked: false,
+        reason: 'no_matching_exposure_for_request',
+        outcome_type: outcomeType,
+        recommendation_request_id: String(payload.recommendation_request_id),
+      };
+    }
+    return {
+      linked: true,
+      reason: 'matched_by_request_id',
+      outcome_type: outcomeType,
+      exposure: rows[0],
+    };
+  }
+
+  const [fallbackRows] = await pool.query(
+    `SELECT id, request_id, created_at
+     FROM recommendation_exposures
+     WHERE user_id = ?
+       AND product_id = ?
+       AND created_at >= NOW() - INTERVAL 7 DAY
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId, productId]
+  );
+  if (!fallbackRows?.[0]?.id) {
+    return {
+      linked: false,
+      reason: 'no_recent_exposure_for_user_product',
+      outcome_type: outcomeType,
+    };
+  }
+  return {
+    linked: true,
+    reason: 'matched_by_recent_user_product',
+    outcome_type: outcomeType,
+    exposure: fallbackRows[0],
+  };
+}
+
 async function refreshProductPopularityScore(pool, productId) {
   const pid = Number(productId || 0);
   if (!pid) return;
@@ -966,6 +1032,62 @@ app.get('/api/embeddings/status', async (req, res) => {
   }
 });
 
+app.get('/api/experiments/status', async (req, res) => {
+  try {
+    const pool = getPool();
+    const windowDays = Math.max(1, Math.min(365, Number(req.query?.window_days || 14)));
+    const [split] = await pool.query(
+      `SELECT strategy AS variant, COUNT(*) AS exposures
+       FROM recommendation_exposures
+       WHERE created_at >= NOW() - INTERVAL ? DAY
+       GROUP BY strategy
+       ORDER BY exposures DESC`,
+      [windowDays]
+    );
+    const [metrics] = await pool.query(
+      `SELECT
+        e.strategy AS variant,
+        COUNT(*) AS exposures,
+        SUM(CASE WHEN o.outcome_type = 'clicked' THEN 1 ELSE 0 END) AS clicks,
+        SUM(CASE WHEN o.outcome_type = 'carted' THEN 1 ELSE 0 END) AS carts,
+        SUM(CASE WHEN o.outcome_type = 'purchased' THEN 1 ELSE 0 END) AS purchases
+      FROM recommendation_exposures e
+      LEFT JOIN recommendation_outcomes o ON o.exposure_id = e.id
+      WHERE e.created_at >= NOW() - INTERVAL ? DAY
+      GROUP BY e.strategy
+      ORDER BY exposures DESC`,
+      [windowDays]
+    );
+
+    const formatted = metrics.map((row) => {
+      const exposures = Number(row.exposures || 0);
+      const clicks = Number(row.clicks || 0);
+      const carts = Number(row.carts || 0);
+      const purchases = Number(row.purchases || 0);
+      return {
+        variant: row.variant,
+        exposures,
+        clicks,
+        carts,
+        purchases,
+        ctr: exposures ? Number((clicks / exposures).toFixed(4)) : 0,
+        cart_rate: exposures ? Number((carts / exposures).toFixed(4)) : 0,
+        purchase_rate: exposures ? Number((purchases / exposures).toFixed(4)) : 0,
+      };
+    });
+
+    return res.status(200).json({
+      rollout_percent_hybrid: EXPERIMENT_HYBRID_PERCENT,
+      window_days: windowDays,
+      traffic_split: split,
+      metrics: formatted,
+    });
+  } catch (error) {
+    logRouteError('/api/experiments/status', req, error);
+    return sendInternalError(res, req, 'Failed to fetch experiments status');
+  }
+});
+
 
 
 
@@ -986,27 +1108,35 @@ app.post('/api/activity', requireClerkAuth, ensureUserRecord, async (req, res) =
       device_type = null,
       recommendation_request_id = null,
       latency_ms = null,
+      results_count = 0,
+      clicked_product_id = null,
+      search_duration_ms = 0,
     } = req.body || {};
 
     if (!event_type) {
       return res.status(400).json({ error: 'event_type is required' });
+    }
+    const normalizedEventType = String(event_type || '').toLowerCase();
+    const safeProductId = product_id == null ? null : Number(product_id);
+    const requiresProductId = new Set(['view_product', 'click_product', 'add_to_cart', 'purchase']);
+    if (requiresProductId.has(normalizedEventType) && (!Number.isFinite(safeProductId) || safeProductId <= 0)) {
+      return res.status(400).json({ error: `product_id is required for event_type=${normalizedEventType}` });
     }
 
     const pool = getPool();
     await pool.query(
       `INSERT INTO user_activity (user_id, clerk_user_id, event_type, product_id, category_id, search_query, weight_score)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.auth.dbUserId, req.auth.userId, event_type, product_id, category_id, search_query, weight_score]
+      [req.auth.dbUserId, req.auth.userId, normalizedEventType, safeProductId, category_id, search_query, weight_score]
     );
 
-    const interactionType = mapActivityToInteractionType(event_type);
+    const interactionType = mapActivityToInteractionType(normalizedEventType);
     if (interactionType) {
       const safeDuration = Math.max(0, Number(duration_seconds) || 0);
       const resolvedDeviceType = ['mobile', 'desktop', 'tablet'].includes(String(device_type || '').toLowerCase())
         ? String(device_type).toLowerCase()
         : inferDeviceType(req.headers['user-agent']);
       const safeSessionId = session_id ? String(session_id).slice(0, 100) : null;
-      const safeProductId = product_id == null ? null : Number(product_id);
 
       await pool.query(
         `INSERT INTO user_interactions (user_id, product_id, interaction_type, duration_seconds, session_id, device_type)
@@ -1023,14 +1153,66 @@ app.post('/api/activity', requireClerkAuth, ensureUserRecord, async (req, res) =
       });
     }
 
-    if (product_id) {
-      await refreshProductPopularityScore(pool, product_id);
+    if (normalizedEventType === 'search' && search_query) {
+      const safeResultsCount = Math.max(0, Number(results_count) || 0);
+      const safeClickedProductId = clicked_product_id == null ? null : Number(clicked_product_id);
+      const safeSearchDurationMs = Math.max(0, Number(search_duration_ms || latency_ms || 0) || 0);
+      await pool.query(
+        `INSERT INTO search_logs
+         (user_id, query_text, results_count, clicked_product_id, search_duration_ms)
+         VALUES (?, ?, ?, ?, ?)`,
+        [req.auth.dbUserId, String(search_query).slice(0, 255), safeResultsCount, safeClickedProductId, safeSearchDurationMs]
+      );
+    }
+
+    if (safeProductId) {
+      await refreshProductPopularityScore(pool, safeProductId);
     }
 
     return res.status(201).json({ message: 'Activity logged' });
   } catch (error) {
     logRouteError('/api/activity', req, error);
     return sendInternalError(res, req, 'Failed to log activity');
+  }
+});
+
+app.get('/api/recommendation-outcomes/debug', requireClerkAuth, ensureUserRecord, async (req, res) => {
+  try {
+    const interactionType = String(req.query.interaction_type || '').trim();
+    const productId = Number(req.query.product_id || 0);
+    const recommendationRequestId = req.query.recommendation_request_id
+      ? String(req.query.recommendation_request_id)
+      : null;
+
+    const pool = getPool();
+    const diagnosis = await diagnoseRecommendationOutcomeLink(pool, {
+      interaction_type: interactionType,
+      user_id: req.auth.dbUserId,
+      product_id: productId,
+      recommendation_request_id: recommendationRequestId,
+    });
+
+    const [recentExposures] = await pool.query(
+      `SELECT id, request_id, product_id, strategy, source, created_at
+       FROM recommendation_exposures
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [req.auth.dbUserId]
+    );
+
+    return res.status(200).json({
+      diagnosis,
+      input: {
+        interaction_type: interactionType,
+        product_id: productId || null,
+        recommendation_request_id: recommendationRequestId,
+      },
+      recent_exposures: recentExposures,
+    });
+  } catch (error) {
+    logRouteError('/api/recommendation-outcomes/debug', req, error);
+    return sendInternalError(res, req, 'Failed to debug recommendation outcome linkage');
   }
 });
 
@@ -1508,9 +1690,9 @@ app.post('/api/bundles/save', requireClerkAuth, ensureUserRecord, async (req, re
     try {
       await conn.beginTransaction();
       const [insertBundle] = await conn.query(
-        `INSERT INTO bundles (name, description, bundle_type, estimated_total_price)
-         VALUES (?, ?, ?, ?)`,
-        [safeName, safeDesc, safeType, safeTotal]
+        `INSERT INTO bundles (user_id, name, description, bundle_type, estimated_total_price)
+         VALUES (?, ?, ?, ?, ?)`,
+        [req.userDbId || null, safeName, safeDesc, safeType, safeTotal]
       );
       const bundleId = Number(insertBundle?.insertId || 0);
       for (const item of normalizedItems) {
@@ -1530,6 +1712,278 @@ app.post('/api/bundles/save', requireClerkAuth, ensureUserRecord, async (req, re
   } catch (error) {
     logRouteError('/api/bundles/save', req, error);
     return sendInternalError(res, req, 'Failed to save bundle');
+  }
+});
+
+app.post('/api/orders/checkout', requireClerkAuth, ensureUserRecord, async (req, res) => {
+  try {
+    const { items = [], status = 'paid' } = req.body || {};
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: 'items must be a non-empty array' });
+    }
+
+    const normalizedItems = items
+      .map((item) => ({
+        product_id: Number(item?.product_id || item?.id || 0),
+        quantity: Math.max(1, Number(item?.quantity || item?.qty || 1)),
+        unit_price: Number(item?.unit_price ?? item?.price ?? 0),
+      }))
+      .filter((item) => item.product_id > 0 && Number.isFinite(item.unit_price) && item.unit_price >= 0);
+
+    if (!normalizedItems.length) {
+      return res.status(400).json({ error: 'No valid checkout items' });
+    }
+
+    const safeStatus = String(status || 'paid').slice(0, 32) || 'paid';
+    const totalAmount = Number(
+      normalizedItems.reduce((sum, item) => sum + (Number(item.unit_price || 0) * Number(item.quantity || 1)), 0).toFixed(2)
+    );
+
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [orderInsert] = await conn.query(
+        `INSERT INTO orders (user_id, clerk_user_id, total_amount, status)
+         VALUES (?, ?, ?, ?)`,
+        [req.auth.dbUserId, req.auth.userId, totalAmount, safeStatus]
+      );
+      const orderId = Number(orderInsert?.insertId || 0);
+      for (const item of normalizedItems) {
+        await conn.query(
+          `INSERT INTO order_items (order_id, product_id, quantity, unit_price)
+           VALUES (?, ?, ?, ?)`,
+          [orderId, item.product_id, item.quantity, item.unit_price]
+        );
+        await conn.query(
+          `INSERT INTO user_activity (user_id, clerk_user_id, event_type, product_id, category_id, search_query, weight_score)
+           VALUES (?, ?, 'purchase', ?, NULL, NULL, ?)`,
+          [req.auth.dbUserId, req.auth.userId, item.product_id, Math.max(1, Number(item.quantity || 1))]
+        );
+        await conn.query(
+          `INSERT INTO user_interactions (user_id, product_id, interaction_type, duration_seconds, session_id, device_type)
+           VALUES (?, ?, 'purchased', 0, NULL, ?)`,
+          [req.auth.dbUserId, item.product_id, inferDeviceType(req.headers['user-agent'])]
+        );
+      }
+      await conn.commit();
+      return res.status(201).json({
+        order_id: orderId,
+        total_amount: totalAmount,
+        items_count: normalizedItems.length,
+      });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    logRouteError('/api/orders/checkout', req, error);
+    return sendInternalError(res, req, 'Failed to persist checkout order');
+  }
+});
+
+app.get('/api/cart', requireClerkAuth, ensureUserRecord, async (req, res) => {
+  try {
+    const pool = getPool();
+    const [carts] = await pool.query(
+      `SELECT id FROM carts WHERE user_id = ? LIMIT 1`,
+      [req.auth.dbUserId]
+    );
+    const cartId = Number(carts?.[0]?.id || 0);
+    if (!cartId) return res.status(200).json({ items: [] });
+
+    const [rows] = await pool.query(
+      `SELECT entry_id, entry_type, name, price, image_path, category, quantity, bundle_items_json, bundle_meta_json
+       FROM cart_items
+       WHERE cart_id = ?
+       ORDER BY id ASC`,
+      [cartId]
+    );
+    const items = rows.map((row) => ({
+      id: row.entry_id,
+      entry_type: row.entry_type,
+      name: row.name,
+      price: Number(row.price || 0),
+      image_path: row.image_path || null,
+      category: row.category || null,
+      qty: Math.max(1, Number(row.quantity || 1)),
+      bundle_items: row.bundle_items_json ? JSON.parse(row.bundle_items_json) : null,
+      bundle_meta: row.bundle_meta_json ? JSON.parse(row.bundle_meta_json) : null,
+    }));
+    return res.status(200).json({ items });
+  } catch (error) {
+    logRouteError('/api/cart', req, error);
+    return sendInternalError(res, req, 'Failed to fetch cart');
+  }
+});
+
+app.put('/api/cart', requireClerkAuth, ensureUserRecord, async (req, res) => {
+  try {
+    const payloadItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const normalized = payloadItems
+      .map((item) => ({
+        entry_id: String(item?.id || '').slice(0, 120),
+        entry_type: String(item?.entry_type || 'item') === 'bundle' ? 'bundle' : 'item',
+        name: String(item?.name || 'Product').slice(0, 255),
+        price: Number(item?.price || 0),
+        image_path: item?.image_path ? String(item.image_path).slice(0, 255) : null,
+        category: item?.category ? String(item.category).slice(0, 100) : null,
+        quantity: Math.max(1, Number(item?.qty || item?.quantity || 1)),
+        bundle_items_json: item?.bundle_items ? JSON.stringify(item.bundle_items) : null,
+        bundle_meta_json: item?.bundle_meta ? JSON.stringify(item.bundle_meta) : null,
+      }))
+      .filter((item) => item.entry_id && Number.isFinite(item.price) && item.price >= 0);
+
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query(
+        `INSERT INTO carts (user_id, clerk_user_id) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE clerk_user_id = VALUES(clerk_user_id), updated_at = CURRENT_TIMESTAMP`,
+        [req.auth.dbUserId, req.auth.userId]
+      );
+      const [carts] = await conn.query(`SELECT id FROM carts WHERE user_id = ? LIMIT 1`, [req.auth.dbUserId]);
+      const cartId = Number(carts?.[0]?.id || 0);
+      if (!cartId) throw new Error('Failed to resolve cart id');
+
+      await conn.query(`DELETE FROM cart_items WHERE cart_id = ?`, [cartId]);
+      for (const item of normalized) {
+        await conn.query(
+          `INSERT INTO cart_items
+           (cart_id, entry_id, entry_type, name, price, image_path, category, quantity, bundle_items_json, bundle_meta_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            cartId,
+            item.entry_id,
+            item.entry_type,
+            item.name,
+            item.price,
+            item.image_path,
+            item.category,
+            item.quantity,
+            item.bundle_items_json,
+            item.bundle_meta_json,
+          ]
+        );
+      }
+      await conn.commit();
+      return res.status(200).json({ ok: true, items_saved: normalized.length });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    logRouteError('/api/cart', req, error);
+    return sendInternalError(res, req, 'Failed to save cart');
+  }
+});
+
+app.get('/api/bundles/popular', async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(20, Number(req.query.limit || 6)));
+    const pool = getPool();
+    const [rows] = await pool.query(
+      `
+      SELECT
+        b.id AS bundle_id,
+        b.name AS bundle_name,
+        b.bundle_type,
+        b.estimated_total_price,
+        b.created_at,
+        bi.product_id,
+        bi.quantity,
+        p.name AS product_name,
+        p.price AS product_price,
+        p.image_path AS product_image_path,
+        p.category AS product_category
+      FROM bundles b
+      JOIN bundle_items bi ON bi.bundle_id = b.id
+      JOIN products p ON p.id = bi.product_id
+      ORDER BY b.created_at DESC, b.id DESC
+      `
+    );
+
+    const byBundle = new Map();
+    for (const row of rows) {
+      const bundleId = Number(row.bundle_id || 0);
+      if (!bundleId) continue;
+      if (!byBundle.has(bundleId)) {
+        byBundle.set(bundleId, {
+          id: bundleId,
+          name: String(row.bundle_name || 'Smart Bundle'),
+          bundle_type: String(row.bundle_type || 'study'),
+          estimated_total_price: Number(row.estimated_total_price || 0),
+          created_at: row.created_at,
+          items: [],
+        });
+      }
+      byBundle.get(bundleId).items.push({
+        id: Number(row.product_id || 0),
+        name: String(row.product_name || 'Product'),
+        price: Number(row.product_price || 0),
+        image_path: row.product_image_path || null,
+        category: row.product_category || null,
+        qty: Math.max(1, Number(row.quantity || 1)),
+      });
+    }
+
+    const bySignature = new Map();
+    for (const bundle of byBundle.values()) {
+      const signature = bundle.items
+        .map((item) => `${item.id}:${item.qty}`)
+        .sort()
+        .join('|');
+      if (!signature) continue;
+
+      const total = bundle.estimated_total_price > 0
+        ? bundle.estimated_total_price
+        : bundle.items.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.qty || 1)), 0);
+
+      const existing = bySignature.get(signature);
+      if (!existing) {
+        bySignature.set(signature, {
+          id: bundle.id,
+          name: bundle.name,
+          bundle_type: bundle.bundle_type,
+          estimated_total_price: Number(total.toFixed(2)),
+          times_saved: 1,
+          created_at: bundle.created_at,
+          items: bundle.items,
+        });
+        continue;
+      }
+
+      existing.times_saved += 1;
+      if (new Date(bundle.created_at).getTime() > new Date(existing.created_at).getTime()) {
+        existing.id = bundle.id;
+        existing.name = bundle.name;
+        existing.bundle_type = bundle.bundle_type;
+        existing.estimated_total_price = Number(total.toFixed(2));
+        existing.created_at = bundle.created_at;
+        existing.items = bundle.items;
+      }
+    }
+
+    const popular = Array.from(bySignature.values())
+      .sort((a, b) => {
+        if (b.times_saved !== a.times_saved) return b.times_saved - a.times_saved;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      })
+      .slice(0, limit)
+      .map((bundle) => ({
+        ...bundle,
+        item_count: bundle.items.length,
+      }));
+
+    return res.status(200).json(popular);
+  } catch (error) {
+    logRouteError('/api/bundles/popular', req, error);
+    return sendInternalError(res, req, 'Failed to fetch popular bundles');
   }
 });
 

@@ -29,6 +29,7 @@ export default function SmartMode({
   error,
   bundleScenarios,
   modelMeta,
+  debugReco,
   addBundleToCart,
 }) {
   const navigate = useNavigate();
@@ -394,11 +395,21 @@ export default function SmartMode({
             ))}
           </div>
 
+          <div className="mt-3 rounded-lg border border-[#d5dded] bg-white px-3 py-2 text-left text-xs text-slate-600">
+            <p className="font-semibold text-slate-700">Why this bundle</p>
+            <p className="mt-1">Prioritizes best value-per-price items within your budget and current goal preference.</p>
+          </div>
+
           <div className="opti-enter-soft opti-stagger-2 mt-4 rounded-lg border border-[#d5dded] bg-white px-3 py-2 text-sm text-slate-700">
             <p>Subtotal: <span className="font-bold text-slate-900">{formatPrice(customizedTotals.subtotal)}</span></p>
             <p>Bundle discount ({Math.round(customizedTotals.discountRate * 100)}%): <span className="font-bold text-emerald-700">- {formatPrice(customizedTotals.discountValue)}</span></p>
             <p>Total after bundle discount: <span className="font-extrabold text-[#1A2A54]">{formatPrice(customizedTotals.total)}</span></p>
           </div>
+          {debugReco && (
+            <div className="mt-2 rounded-lg border border-dashed border-[#c8d5ec] bg-[#f8fbff] px-3 py-2 text-[11px] text-slate-600">
+              <p>Debug: variant={modelMeta?.experiment?.variant || '-'} strategy={modelMeta?.strategy || '-'} model={modelMeta?.active_model?.model_version || '-'} applied={String(!!modelMeta?.model_applied)}</p>
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button

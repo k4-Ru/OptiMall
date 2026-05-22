@@ -103,3 +103,38 @@ export function postSaveBundle(payload, token) {
     body: JSON.stringify(payload),
   });
 }
+
+export function getPopularBundles(limit = 6) {
+  const safeLimit = Math.max(1, Math.min(20, Number(limit) || 6));
+  return request(`/bundles/popular?limit=${safeLimit}`);
+}
+
+export function postCheckout(payload, token) {
+  return request('/orders/checkout', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+export function getCart(token) {
+  return request('/cart', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function putCart(payload, token) {
+  return request('/cart', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload || {}),
+  });
+}

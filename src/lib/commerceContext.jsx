@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '@clerk/clerk-react';
+import { getCart, postActivity, putCart } from './api';
 
 const CART_KEY = 'optimall_cart_v1';
 const ORDERS_KEY = 'optimall_orders_v1';
@@ -41,9 +43,11 @@ function makeOrder(items) {
 }
 
 export function CommerceProvider({ children }) {
+  const { isSignedIn, getToken } = useAuth();
   const [cart, setCart] = useState(() => readJson(CART_KEY, []));
   const [orders, setOrders] = useState(() => readJson(ORDERS_KEY, []));
   const lastPointerRef = useRef(null);
+  const hydratedRemoteCartRef = useRef(false);
 
   useEffect(() => {
     function capturePointer(event) {
@@ -59,6 +63,46 @@ export function CommerceProvider({ children }) {
       window.removeEventListener('pointerdown', capturePointer);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadRemoteCart() {
+      if (!isSignedIn) {
+        hydratedRemoteCartRef.current = false;
+        return;
+      }
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const data = await getCart(token);
+        if (!active) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        setCart(items);
+        writeJson(CART_KEY, items);
+        hydratedRemoteCartRef.current = true;
+      } catch {
+        hydratedRemoteCartRef.current = true;
+      }
+    }
+    loadRemoteCart();
+    return () => {
+      active = false;
+    };
+  }, [isSignedIn, getToken]);
+
+  useEffect(() => {
+    async function syncRemoteCart() {
+      if (!isSignedIn || !hydratedRemoteCartRef.current) return;
+      try {
+        const token = await getToken();
+        if (!token) return;
+        await putCart({ items: cart }, token);
+      } catch {
+        // non-blocking cart sync
+      }
+    }
+    syncRemoteCart();
+  }, [cart, isSignedIn, getToken]);
 
   function persistCart(next) {
     setCart(next);
@@ -88,6 +132,20 @@ export function CommerceProvider({ children }) {
       });
     }
     persistCart(next);
+    if (isSignedIn) {
+      getToken()
+        .then((token) => {
+          if (!token) return null;
+          return postActivity({
+            event_type: 'add_to_cart',
+            product_id: Number(product?.id || 0) || null,
+            weight_score: Math.max(1, safeQty),
+          }, token);
+        })
+        .catch(() => {
+          // non-blocking behavior signal write
+        });
+    }
 
     const pointer = lastPointerRef.current;
     if (pointer && Date.now() - Number(pointer.ts || 0) < 2000) {
@@ -136,6 +194,22 @@ export function CommerceProvider({ children }) {
     };
 
     persistCart([...cart, entry]);
+    if (isSignedIn) {
+      getToken()
+        .then(async (token) => {
+          if (!token) return;
+          for (const item of normalizedItems) {
+            await postActivity({
+              event_type: 'add_to_cart',
+              product_id: Number(item?.id || 0) || null,
+              weight_score: Math.max(1, Number(item?.qty || 1)),
+            }, token);
+          }
+        })
+        .catch(() => {
+          // non-blocking behavior signal write
+        });
+    }
 
     const pointer = lastPointerRef.current;
     if (pointer && Date.now() - Number(pointer.ts || 0) < 2000) {

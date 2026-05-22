@@ -73,16 +73,25 @@ function AppRouter() {
   );
 }
 
-createRoot(document.getElementById('root')).render(
-  <CommerceProvider>
-    <ClerkProvider
-      publishableKey={clerkPubKey}
-      signInUrl="/login"
-      signUpUrl="/signup"
-      signInFallbackRedirectUrl="/home"
-      signUpFallbackRedirectUrl="/home"
-    >
+const container = document.getElementById('root');
+if (!container) {
+  throw new Error('Missing root container');
+}
+
+const ROOT_KEY = '__optimall_react_root__';
+const root = globalThis[ROOT_KEY] || createRoot(container);
+globalThis[ROOT_KEY] = root;
+
+root.render(
+  <ClerkProvider
+    publishableKey={clerkPubKey}
+    signInUrl="/login"
+    signUpUrl="/signup"
+    signInFallbackRedirectUrl="/home"
+    signUpFallbackRedirectUrl="/home"
+  >
+    <CommerceProvider>
       <AppRouter />
-    </ClerkProvider>
-  </CommerceProvider>
+    </CommerceProvider>
+  </ClerkProvider>
 );
