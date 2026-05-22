@@ -272,8 +272,23 @@ async function ensureUserRecord(req, res, next) {
       [req.auth.userId, email, name]
     );
 
-    const [rows] = await pool.query('SELECT id FROM users WHERE clerk_user_id = ? LIMIT 1', [req.auth.userId]);
+    const [rows] = await pool.query(
+      'SELECT id, is_flagged, flagged_at, flag_reason FROM users WHERE clerk_user_id = ? LIMIT 1',
+      [req.auth.userId]
+    );
     req.auth.dbUserId = rows?.[0]?.id || null;
+    req.auth.isFlagged = Number(rows?.[0]?.is_flagged || 0) === 1;
+    req.auth.flaggedAt = rows?.[0]?.flagged_at || null;
+    req.auth.flagReason = rows?.[0]?.flag_reason || null;
+    if (req.auth.isFlagged) {
+      return res.status(403).json({
+        error: 'Suspicious activity detected. Access restricted.',
+        error_type: 'SUSPICIOUS_USER_BLOCKED',
+        flagged_at: req.auth.flaggedAt,
+        flag_reason: req.auth.flagReason || 'suspicious_activity',
+        request_id: req.requestId,
+      });
+    }
     return next();
   } catch (error) {
     logRouteError('auth/ensureUserRecord', req, error);
@@ -305,6 +320,95 @@ async function getRecentUserActivity(pool, dbUserId) {
     activityEvents,
     latestEvent: activityEvents[0] || null,
   };
+}
+
+async function getUserAbuseSnapshot(pool, userId) {
+  const uid = Number(userId || 0);
+  if (!uid) {
+    return {
+      add_to_cart_1m: 0,
+      add_to_cart_10m: 0,
+      purchase_10m: 0,
+      purchase_1h: 0,
+      orders_24h: 0,
+      spend_24h: 0,
+    };
+  }
+
+  const [[events]] = await pool.query(
+    `SELECT
+       SUM(CASE WHEN event_type = 'add_to_cart' AND created_at >= NOW() - INTERVAL 1 MINUTE THEN 1 ELSE 0 END) AS add_to_cart_1m,
+       SUM(CASE WHEN event_type = 'add_to_cart' AND created_at >= NOW() - INTERVAL 10 MINUTE THEN 1 ELSE 0 END) AS add_to_cart_10m,
+       SUM(CASE WHEN event_type = 'purchase' AND created_at >= NOW() - INTERVAL 10 MINUTE THEN 1 ELSE 0 END) AS purchase_10m,
+       SUM(CASE WHEN event_type = 'purchase' AND created_at >= NOW() - INTERVAL 1 HOUR THEN 1 ELSE 0 END) AS purchase_1h
+     FROM user_activity
+     WHERE user_id = ?`,
+    [uid]
+  );
+
+  const [[orders]] = await pool.query(
+    `SELECT
+       COUNT(*) AS orders_24h,
+       COALESCE(SUM(total_amount), 0) AS spend_24h
+     FROM orders
+     WHERE user_id = ?
+       AND created_at >= NOW() - INTERVAL 24 HOUR`,
+    [uid]
+  );
+
+  return {
+    add_to_cart_1m: Number(events?.add_to_cart_1m || 0),
+    add_to_cart_10m: Number(events?.add_to_cart_10m || 0),
+    purchase_10m: Number(events?.purchase_10m || 0),
+    purchase_1h: Number(events?.purchase_1h || 0),
+    orders_24h: Number(orders?.orders_24h || 0),
+    spend_24h: Number(orders?.spend_24h || 0),
+  };
+}
+
+function detectAbuseBlock(snapshot, context = {}) {
+  const kind = String(context.kind || '');
+  const checkoutItems = Number(context.checkout_items || 0);
+  const checkoutTotal = Number(context.checkout_total || 0);
+
+  if (kind === 'activity_add_to_cart') {
+    if (snapshot.add_to_cart_1m >= 25) {
+      return { blocked: true, reason: 'add_to_cart_spike_1m', retry_after_seconds: 120 };
+    }
+    if (snapshot.add_to_cart_10m >= 140) {
+      return { blocked: true, reason: 'add_to_cart_spike_10m', retry_after_seconds: 300 };
+    }
+  }
+
+  if (kind === 'activity_purchase') {
+    if (snapshot.purchase_10m >= 8) {
+      return { blocked: true, reason: 'purchase_spike_10m', retry_after_seconds: 300 };
+    }
+  }
+
+  if (kind === 'checkout') {
+    if (checkoutItems > 80) return { blocked: true, reason: 'checkout_item_volume_too_high', retry_after_seconds: 300 };
+    if (checkoutTotal > 250000) return { blocked: true, reason: 'checkout_value_too_high', retry_after_seconds: 300 };
+    if (snapshot.add_to_cart_10m >= 160) return { blocked: true, reason: 'checkout_after_add_to_cart_spike', retry_after_seconds: 300 };
+    if (snapshot.purchase_1h >= 15) return { blocked: true, reason: 'checkout_purchase_spike_1h', retry_after_seconds: 300 };
+    if (snapshot.orders_24h >= 30) return { blocked: true, reason: 'checkout_order_count_24h_high', retry_after_seconds: 600 };
+    if (snapshot.spend_24h >= 400000) return { blocked: true, reason: 'checkout_spend_24h_high', retry_after_seconds: 600 };
+  }
+
+  return { blocked: false };
+}
+
+async function flagUserAsSuspicious(pool, userId, reason) {
+  const uid = Number(userId || 0);
+  if (!uid) return;
+  await pool.query(
+    `UPDATE users
+     SET is_flagged = 1,
+         flagged_at = COALESCE(flagged_at, NOW()),
+         flag_reason = COALESCE(flag_reason, ?)
+     WHERE id = ?`,
+    [String(reason || 'suspicious_activity').slice(0, 255), uid]
+  );
 }
 
 function buildOutcomeBoostMap(products, activityEvents) {
@@ -1124,6 +1228,24 @@ app.post('/api/activity', requireClerkAuth, ensureUserRecord, async (req, res) =
     }
 
     const pool = getPool();
+    if (normalizedEventType === 'add_to_cart' || normalizedEventType === 'purchase') {
+      const snapshot = await getUserAbuseSnapshot(pool, req.auth.dbUserId);
+      const decision = detectAbuseBlock(snapshot, {
+        kind: normalizedEventType === 'add_to_cart' ? 'activity_add_to_cart' : 'activity_purchase',
+      });
+      if (decision.blocked) {
+        await flagUserAsSuspicious(pool, req.auth.dbUserId, decision.reason);
+        return res.status(429).json({
+          error: 'Suspicious behavior detected. Activity temporarily restricted.',
+          error_type: 'SUSPICIOUS_ACTIVITY_BLOCKED',
+          reason: decision.reason,
+          retry_after_seconds: decision.retry_after_seconds,
+          snapshot,
+          request_id: req.requestId,
+        });
+      }
+    }
+
     await pool.query(
       `INSERT INTO user_activity (user_id, clerk_user_id, event_type, product_id, category_id, search_query, weight_score)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -1740,6 +1862,24 @@ app.post('/api/orders/checkout', requireClerkAuth, ensureUserRecord, async (req,
     );
 
     const pool = getPool();
+    const snapshot = await getUserAbuseSnapshot(pool, req.auth.dbUserId);
+    const decision = detectAbuseBlock(snapshot, {
+      kind: 'checkout',
+      checkout_items: normalizedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+      checkout_total: totalAmount,
+    });
+    if (decision.blocked) {
+      await flagUserAsSuspicious(pool, req.auth.dbUserId, decision.reason);
+      return res.status(429).json({
+        error: 'Checkout blocked due to suspicious behavior. Please try again later.',
+        error_type: 'SUSPICIOUS_CHECKOUT_BLOCKED',
+        reason: decision.reason,
+        retry_after_seconds: decision.retry_after_seconds,
+        snapshot,
+        request_id: req.requestId,
+      });
+    }
+
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -1782,6 +1922,14 @@ app.post('/api/orders/checkout', requireClerkAuth, ensureUserRecord, async (req,
     logRouteError('/api/orders/checkout', req, error);
     return sendInternalError(res, req, 'Failed to persist checkout order');
   }
+});
+
+app.get('/api/auth/access', requireClerkAuth, ensureUserRecord, async (req, res) => {
+  return res.status(200).json({
+    allowed: true,
+    user_id: req.auth.dbUserId || null,
+    request_id: req.requestId,
+  });
 });
 
 app.get('/api/cart', requireClerkAuth, ensureUserRecord, async (req, res) => {

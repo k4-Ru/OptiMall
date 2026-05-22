@@ -2,7 +2,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth, useClerk } from '@clerk/clerk-react';
+import { useEffect, useState } from 'react';
 import './styles.css';
 
 import AppLayout from './components/AppLayout';
@@ -31,10 +32,54 @@ if (!clerkPubKey) {
 }
 
 function RequireAuth({ children }) {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { signOut } = useClerk();
+  const [forcingLogout, setForcingLogout] = useState(false);
+  const [checkedAccess, setCheckedAccess] = useState(false);
 
-  if (!isLoaded) {
+  useEffect(() => {
+    let active = true;
+    async function checkAccess() {
+      if (!isLoaded || !isSignedIn) {
+        if (active) setCheckedAccess(true);
+        return;
+      }
+      try {
+        const token = await getToken();
+        if (!token) {
+          if (active) setCheckedAccess(true);
+          return;
+        }
+        const response = await fetch('/api/auth/access', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (response.status === 403) {
+          const data = await response.json().catch(() => ({}));
+          if (data?.error_type === 'SUSPICIOUS_USER_BLOCKED') {
+            if (active) setForcingLogout(true);
+            return;
+          }
+        }
+      } catch {
+        // ignore check errors and let route proceed
+      } finally {
+        if (active) setCheckedAccess(true);
+      }
+    }
+    checkAccess();
+    return () => {
+      active = false;
+    };
+  }, [isLoaded, isSignedIn, getToken, signOut]);
+
+  if (!isLoaded || !checkedAccess) {
     return <main className="min-h-screen bg-[#eef2f6]" />;
+  }
+
+  if (forcingLogout) {
+    return <Navigate to="/security-logout" replace />;
   }
 
   if (!isSignedIn) {
@@ -42,6 +87,28 @@ function RequireAuth({ children }) {
   }
 
   return children;
+}
+
+function SecurityLogoutPage() {
+  const { signOut } = useClerk();
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      signOut({ redirectUrl: '/login' }).catch(() => {
+        window.location.href = '/login';
+      });
+    }, 1200);
+    return () => window.clearTimeout(timeoutId);
+  }, [signOut]);
+
+  return (
+    <main className="grid min-h-screen place-items-center bg-[#eef2f6] px-4">
+      <div className="rounded-xl border border-[#d5dded] bg-white px-7 py-6 text-center shadow-sm">
+        <p className="text-base font-extrabold text-slate-900">Logging out...</p>
+        <p className="mt-1 text-sm font-semibold text-slate-600">Suspicious activity detected.</p>
+      </div>
+    </main>
+  );
 }
 
 function AppRouter() {
@@ -52,6 +119,7 @@ function AppRouter() {
           <Route index element={<LandingPage />} />
           <Route path="login/*" element={<LoginPage />} />
           <Route path="signup/*" element={<SignupPage />} />
+          <Route path="security-logout" element={<SecurityLogoutPage />} />
           <Route path="home" element={<RequireAuth><HomePage /></RequireAuth>} />
           <Route path="cart" element={<RequireAuth><CartPage /></RequireAuth>} />
           <Route path="deals" element={<RequireAuth><DealsPage /></RequireAuth>} />

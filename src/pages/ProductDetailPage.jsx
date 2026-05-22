@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ShieldCheck, Star, Store, Sparkles, BadgeInfo, MessageSquareQuote, Wallet } from 'lucide-react';
 import Header from '../components/Header';
 import { getProductReviews, getProducts, getRelatedProducts, postIntelligencePipeline } from '../lib/api';
 import { useCommerce } from '../lib/commerceContext';
@@ -68,6 +69,8 @@ export default function ProductDetailPage() {
       product?.brand ||
       'OptiMall Verified Seller'
   );
+  const productRating = Number(product?.rating || 0);
+  const sellerRating = Number(product?.seller_rating || 0);
   const productTags = useMemo(() => parseTags(product?.tags), [product?.tags]);
   const productTagVector = useMemo(() => parseTags(product?.tag_vector), [product?.tag_vector]);
   const effectiveTags = useMemo(
@@ -223,24 +226,39 @@ export default function ProductDetailPage() {
 
         {!loading && product && (
           <>
-            <section className="rounded-2xl bg-[#1A2A54] p-5 text-white sm:p-7">
+            <section className="relative overflow-hidden rounded-2xl bg-[#1A2A54] p-5 text-white sm:p-7">
+              <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#3f5b9b]/30 blur-3xl" />
               <button
                 type="button"
                 onClick={() => navigate(-1)}
-                className="rounded-full border border-white/35 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.1em] text-white hover:bg-white/10"
+                className="opti-press rounded-full border border-white/35 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.1em] text-white hover:bg-white/10"
               >
                 Back
               </button>
               <p className="mt-4 text-xs font-semibold tracking-[0.2em] text-[#B8C7EB]">PRODUCT VIEW</p>
               <h1 className="mt-2 text-2xl font-black sm:text-3xl">{product.name}</h1>
               <p className="mt-1 text-sm text-[#D8E3FA]">{product.category || 'Uncategorized'}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold">
+                  <Star className="h-3.5 w-3.5 text-[#FFD166]" />
+                  Product {productRating > 0 ? productRating.toFixed(1) : '-'}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold">
+                  <Store className="h-3.5 w-3.5 text-[#9EC5FF]" />
+                  Seller {sellerRating > 0 ? sellerRating.toFixed(1) : '-'}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold">
+                  <ShieldCheck className="h-3.5 w-3.5 text-[#93E1B9]" />
+                  Verified listing
+                </span>
+              </div>
             </section>
 
             <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-4 sm:p-6">
               <div className="grid gap-5 md:grid-cols-[260px_1fr]">
-                <div className="flex h-64 items-center justify-center rounded-xl bg-[#f8fbff]">
+                <div className="group flex h-64 items-center justify-center rounded-xl bg-[#f8fbff] ring-1 ring-[#e6eef9] transition duration-300 hover:ring-[#c7d8f2]">
                   {product.image_path ? (
-                    <img src={product.image_path} alt={product.name} className="max-h-full max-w-full object-contain" />
+                    <img src={product.image_path} alt={product.name} className="max-h-full max-w-full object-contain transition duration-300 group-hover:scale-[1.02]" />
                   ) : (
                     <div className="text-xs font-semibold text-slate-400">No Image</div>
                   )}
@@ -252,12 +270,24 @@ export default function ProductDetailPage() {
                     <p className="rounded-lg bg-[#f8fbff] px-3 py-2"><span className="font-semibold text-slate-500">Stock:</span> {product.stock ?? '-'}</p>
                     <p className="rounded-lg bg-[#f8fbff] px-3 py-2"><span className="font-semibold text-slate-500">Seller:</span> {sellerName}</p>
                   </div>
+                  <div className="mt-3 rounded-xl border border-[#d5dded] bg-[#fafdff] p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Seller Profile</p>
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-sm font-bold text-slate-800">{sellerName}</p>
+                      <p className="inline-flex items-center gap-1 text-sm font-extrabold text-[#1A2A54]">
+                        <Star className="h-3.5 w-3.5 text-[#FFB547]" />
+                        {sellerRating > 0 ? sellerRating.toFixed(1) : '-'}
+                      </p>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Trusted seller performance based on catalog and activity quality.</p>
+                  </div>
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">
                     <button
                       type="button"
                       onClick={() => addToCart(product, 1)}
-                      className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-bold text-white hover:bg-[var(--brand-strong)]"
+                      className="opti-press inline-flex items-center gap-1 rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-bold text-white hover:bg-[var(--brand-strong)]"
                     >
+                      <Sparkles className="h-3.5 w-3.5" />
                       Add Product to Cart
                     </button>
                     <button
@@ -266,13 +296,13 @@ export default function ProductDetailPage() {
                         addToCart(product, 1);
                         navigate('/cart');
                       }}
-                      className="rounded-lg bg-[#1A2A54] px-4 py-2 text-sm font-bold text-white hover:bg-[#142042]"
+                      className="opti-press rounded-lg bg-[#1A2A54] px-4 py-2 text-sm font-bold text-white hover:bg-[#142042]"
                     >
                       Buy now
                     </button>
                     <Link
                       to="/cart"
-                      className="rounded-lg border border-[#d5dded] bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-[#f8fbff]"
+                      className="opti-press rounded-lg border border-[#d5dded] bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-[#f8fbff]"
                     >
                       Go to Cart
                     </Link>
@@ -356,9 +386,10 @@ export default function ProductDetailPage() {
 
             <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
               <h2 className="text-lg font-extrabold text-slate-900">Budget Completion Suggestions</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                You still have <span className="font-bold text-[#1A2A54]">{formatPrice(budgetCompletionSuggestions.remaining)}</span> remaining in the balanced tier.
-              </p>
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#d5dded] bg-[#f8fbff] px-3 py-1 text-xs font-semibold text-slate-700">
+                <Wallet className="h-3.5 w-3.5 text-[#1A2A54]" />
+                Remaining balanced-tier budget: <span className="font-extrabold text-[#1A2A54]">{formatPrice(budgetCompletionSuggestions.remaining)}</span>
+              </div>
               <div className="mt-3 space-y-2">
                 {budgetCompletionSuggestions.items.map((item) => (
                   <div key={`budget-${item.id}`} className="flex items-center justify-between rounded-lg border border-[#d5dded] bg-[#f8fbff] px-3 py-2">
@@ -367,23 +398,35 @@ export default function ProductDetailPage() {
                   </div>
                 ))}
                 {!budgetCompletionSuggestions.items.length && (
-                  <p className="text-sm text-slate-500">No additional suggestions fit the remaining budget yet.</p>
+                  <p className="rounded-lg border border-dashed border-[#d5dded] bg-[#fcfdff] px-3 py-2 text-sm text-slate-500">
+                    No high-fit items currently match the remaining amount. Try a higher tier for broader options.
+                  </p>
                 )}
               </div>
             </section>
 
             <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
               <h2 className="text-lg font-extrabold text-slate-900">Why This Was Recommended</h2>
-              <div className="mt-3 space-y-2">
+              <p className="mt-1 text-sm text-slate-600">Transparent reasoning from category, tags, and bundle compatibility signals.</p>
+              <div className="mt-3 grid gap-2">
                 {explanationLines.map((line, idx) => (
-                  <p key={`exp-${idx}`} className="rounded-lg bg-[#f8fbff] px-3 py-2 text-sm text-slate-700">✓ {line}</p>
+                  <div key={`exp-${idx}`} className="flex items-start gap-2 rounded-lg border border-[#e1e9f6] bg-[#f8fbff] px-3 py-2 text-sm text-slate-700">
+                    <BadgeInfo className="mt-0.5 h-4 w-4 shrink-0 text-[#1A2A54]" />
+                    <p>{line}</p>
+                  </div>
                 ))}
               </div>
             </section>
 
             <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
-              <h2 className="text-lg font-extrabold text-slate-900">Reviews</h2>
-              <p className="mt-1 text-sm text-slate-600">Rating: <span className="font-bold text-slate-900">{Number(product.rating || 0).toFixed(1)} / 5</span></p>
+              <h2 className="inline-flex items-center gap-2 text-lg font-extrabold text-slate-900">
+                <MessageSquareQuote className="h-5 w-5 text-[#1A2A54]" />
+                Reviews
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Product rating: <span className="font-bold text-slate-900">{Number(product.rating || 0).toFixed(1)} / 5</span>
+                <span className="ml-2 text-xs text-slate-500">({dbReviews.length} verified review{dbReviews.length === 1 ? '' : 's'} loaded)</span>
+              </p>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
                 {dbReviews.length > 0 ? dbReviews.slice(0, 6).map((review) => (
                   <p key={`rv-${review.id}`} className="rounded-lg bg-[#f8fbff] px-3 py-2">
@@ -391,10 +434,9 @@ export default function ProductDetailPage() {
                     <span className="ml-2 text-xs font-semibold text-slate-500">— {review.reviewer_name || 'OptiMall User'}</span>
                   </p>
                 )) : (
-                  <>
-                    <p className="rounded-lg bg-[#f8fbff] px-3 py-2">“Great value for the price and works well with setup bundles.”</p>
-                    <p className="rounded-lg bg-[#f8fbff] px-3 py-2">“Delivery was fast and quality is solid for daily use.”</p>
-                  </>
+                  <p className="rounded-lg border border-dashed border-[#d5dded] bg-[#fcfdff] px-3 py-2 text-slate-500">
+                    No verified buyer reviews yet for this item.
+                  </p>
                 )}
               </div>
             </section>

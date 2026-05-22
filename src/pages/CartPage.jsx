@@ -13,7 +13,9 @@ import {
   Trash2,
   CreditCard,
   CheckCircle2,
-  Package
+  Package,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 function formatPrice(value) {
@@ -27,7 +29,16 @@ export default function CartPage() {
   const [checkoutError, setCheckoutError] = useState('');
   const navigate = useNavigate();
   const { isSignedIn, getToken } = useAuth();
-  const { cart, cartCount, cartTotal, updateQty, removeFromCart, checkoutSelection } = useCommerce();
+  const {
+    cart,
+    cartCount,
+    cartTotal,
+    updateQty,
+    removeFromCart,
+    checkoutSelection,
+    securityNotice,
+    dismissSecurityNotice,
+  } = useCommerce();
 
   const selectedEntry = useMemo(() => {
     if (!cart.length || selectedEntryId === '__all__') return null;
@@ -90,7 +101,12 @@ export default function CartPage() {
       const order = checkoutSelection(selectedEntry?.id || '__all__');
       if (order) navigate(`/orders/${order.id}`);
     } catch (err) {
-      setCheckoutError(err.message || 'Checkout failed.');
+      const message = String(err?.message || 'Checkout failed.');
+      if (message.toLowerCase().includes('suspicious behavior')) {
+        setCheckoutError('Checkout is temporarily blocked due to unusual behavior. Please pause and try again later.');
+      } else {
+        setCheckoutError(message);
+      }
     } finally {
       setCheckoutLoading(false);
     }
@@ -124,6 +140,18 @@ export default function CartPage() {
             Review your bundle choices, verify totals, and execute a simulated instant payment checkout.
           </p>
         </section>
+
+        {!!securityNotice && (
+          <div className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p className="text-xs font-semibold">{securityNotice}</p>
+            </div>
+            <button type="button" onClick={dismissSecurityNotice} className="rounded p-1 hover:bg-amber-100" aria-label="Dismiss security notice">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
 
         {cart.length === 0 ? (
           <section className="mt-10 rounded-2xl border border-[#d5dded] bg-white p-8 text-center shadow-sm max-w-md mx-auto">

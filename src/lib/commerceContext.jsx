@@ -46,6 +46,7 @@ export function CommerceProvider({ children }) {
   const { isSignedIn, getToken } = useAuth();
   const [cart, setCart] = useState(() => readJson(CART_KEY, []));
   const [orders, setOrders] = useState(() => readJson(ORDERS_KEY, []));
+  const [securityNotice, setSecurityNotice] = useState('');
   const lastPointerRef = useRef(null);
   const hydratedRemoteCartRef = useRef(false);
 
@@ -114,6 +115,14 @@ export function CommerceProvider({ children }) {
     writeJson(ORDERS_KEY, next);
   }
 
+  function maybeSetSecurityNotice(error) {
+    const message = String(error?.message || '');
+    if (!message) return;
+    if (message.toLowerCase().includes('suspicious behavior') || message.toLowerCase().includes('temporarily restricted')) {
+      setSecurityNotice('Security hold is active due to unusual activity. Some actions are temporarily restricted.');
+    }
+  }
+
   function addToCart(product, qty = 1) {
     const safeQty = Math.max(1, Number(qty) || 1);
     const next = [...cart];
@@ -142,7 +151,8 @@ export function CommerceProvider({ children }) {
             weight_score: Math.max(1, safeQty),
           }, token);
         })
-        .catch(() => {
+        .catch((error) => {
+          maybeSetSecurityNotice(error);
           // non-blocking behavior signal write
         });
     }
@@ -206,7 +216,8 @@ export function CommerceProvider({ children }) {
             }, token);
           }
         })
-        .catch(() => {
+        .catch((error) => {
+          maybeSetSecurityNotice(error);
           // non-blocking behavior signal write
         });
     }
@@ -292,6 +303,7 @@ export function CommerceProvider({ children }) {
     () => ({
       cart,
       orders,
+      securityNotice,
       cartCount,
       cartTotal,
       addToCart,
@@ -302,8 +314,9 @@ export function CommerceProvider({ children }) {
       checkout,
       checkoutItem,
       checkoutSelection,
+      dismissSecurityNotice: () => setSecurityNotice(''),
     }),
-    [cart, orders, cartCount, cartTotal]
+    [cart, orders, securityNotice, cartCount, cartTotal]
   );
 
   return <CommerceContext.Provider value={value}>{children}</CommerceContext.Provider>;
