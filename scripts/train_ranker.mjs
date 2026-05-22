@@ -162,7 +162,9 @@ async function loadDataset(pool, windowDays, maxRows) {
       prior_ctr,
       prior_cvr
     FROM user_product_features_daily
+    JOIN users u ON u.id = user_product_features_daily.user_id
     WHERE feature_date >= CURDATE() - INTERVAL ? DAY
+      AND COALESCE(u.is_flagged, 0) = 0
     ORDER BY feature_date ASC, user_id ASC, product_id ASC
     LIMIT ?
     `,

@@ -27,6 +27,46 @@ const TIERS = [
   { key: 'max', label: 'Max Value Tier', mult: 3.0 },
 ];
 
+function computeDynamicBundleDiscount({ bundle, budget, totalCost }) {
+  const safeBundle = Array.isArray(bundle) ? bundle : [];
+  const safeBudget = Math.max(1, Number(budget || 1));
+  const safeTotal = Math.max(0, Number(totalCost || 0));
+  const spendRatio = Math.min(1.25, safeTotal / safeBudget);
+  const itemCount = safeBundle.length;
+  const avgRating = safeBundle.length
+    ? safeBundle.reduce((sum, item) => sum + Number(item?.rating || 0), 0) / safeBundle.length
+    : 0;
+  const categories = new Set(
+    safeBundle.map((item) => String(item?.category || '').trim().toLowerCase()).filter(Boolean)
+  );
+  const diversity = safeBundle.length ? Math.min(1, categories.size / Math.min(5, safeBundle.length)) : 0;
+
+  const budgetFitScore = Math.max(0, Math.min(100, Math.round(55 + (Math.min(1, spendRatio) * 40) - Math.max(0, (1 - Math.min(1, spendRatio)) * 20))));
+  const qualityScore = Math.max(0, Math.min(100, Math.round((avgRating / 5) * 100)));
+  const diversityScore = Math.max(0, Math.min(100, Math.round(diversity * 100)));
+  const finalScore = Math.max(0, Math.min(100, Math.round(
+    (budgetFitScore * 0.45) +
+    (qualityScore * 0.35) +
+    (diversityScore * 0.2)
+  )));
+
+  const itemCountFactor = itemCount >= 6 ? 0.018 : itemCount >= 4 ? 0.013 : itemCount >= 2 ? 0.008 : 0;
+  const spendFitFactor = spendRatio >= 0.95 ? 0.018 : spendRatio >= 0.85 ? 0.014 : spendRatio >= 0.7 ? 0.009 : 0.004;
+  const qualityFactor = (qualityScore / 100) * 0.012;
+  const diversityFactor = (diversityScore / 100) * 0.008;
+  const budgetFitFactor = (budgetFitScore / 100) * 0.01;
+  const scoreFactor = (finalScore / 100) * 0.012;
+  const dynamicRate = 0.08 + itemCountFactor + spendFitFactor + qualityFactor + diversityFactor + budgetFitFactor + scoreFactor;
+  const discountRate = itemCount >= 2 ? Math.max(0.08, Math.min(0.35, dynamicRate)) : 0;
+  const discountValue = safeTotal * discountRate;
+
+  return {
+    discountRate,
+    discountValue: Number(discountValue.toFixed(2)),
+    discountedTotal: Number((safeTotal - discountValue).toFixed(2)),
+  };
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -37,6 +77,7 @@ export default function ProductDetailPage() {
   const [loadingBundles, setLoadingBundles] = useState(false);
   const [error, setError] = useState('');
   const [bundleSets, setBundleSets] = useState([]);
+  const [expandedBundleTiers, setExpandedBundleTiers] = useState({});
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [dbReviews, setDbReviews] = useState([]);
 
@@ -163,11 +204,20 @@ export default function ProductDetailPage() {
                 image_path: item?.image_path || fallback?.image_path || null,
               };
             });
+            const originalTotal = Number(bundleOpt.total_cost || 0);
+            const discountMeta = computeDynamicBundleDiscount({
+              bundle: enrichedBundle,
+              budget,
+              totalCost: originalTotal,
+            });
             return {
               ...tier,
               budget,
-              total: Number(bundleOpt.total_cost || 0),
-              remaining: Number(bundleOpt.remaining_budget || 0),
+              original_total: originalTotal,
+              total: discountMeta.discountedTotal,
+              remaining: Number((budget - discountMeta.discountedTotal).toFixed(2)),
+              discount_rate: discountMeta.discountRate,
+              discount_value: discountMeta.discountValue,
               score: Number(bundleOpt.bundle_score || 0),
               bundle: enrichedBundle,
             };
@@ -323,8 +373,13 @@ export default function ProductDetailPage() {
                       <p className="text-xs font-semibold text-slate-500">{tier.label}</p>
                       <p className="mt-1 text-lg font-extrabold text-[var(--primary)]">{formatPrice(tier.budget)}</p>
                       <p className="text-xs text-slate-500">Bundle: {formatPrice(tier.total)} • Remaining: {formatPrice(tier.remaining)}</p>
+                      {!!Number(tier.discount_value || 0) && (
+                        <p className="mt-0.5 text-[11px] font-semibold text-emerald-700">
+                          Discount ({Math.round(Number(tier.discount_rate || 0) * 100)}%): -{formatPrice(tier.discount_value)}
+                        </p>
+                      )}
                       <div className="mt-3 space-y-2">
-                        {tier.bundle.slice(0, 4).map((item) => (
+                        {(expandedBundleTiers[tier.key] ? tier.bundle : tier.bundle.slice(0, 4)).map((item) => (
                           <div key={`${tier.key}-${item.id}`} className="flex items-center justify-between gap-2 rounded border border-[#d5dded] bg-white px-2 py-1.5">
                             <div className="flex min-w-0 items-center gap-2">
                               {item.image_path ? (
@@ -346,6 +401,15 @@ export default function ProductDetailPage() {
                           </div>
                         ))}
                         {!tier.bundle.length && <p className="text-xs text-slate-400">No items for this tier.</p>}
+                        {tier.bundle.length > 4 && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedBundleTiers((prev) => ({ ...prev, [tier.key]: !prev[tier.key] }))}
+                            className="text-left text-[11px] font-bold text-[#1A2A54] hover:text-[#2a3f78]"
+                          >
+                            {expandedBundleTiers[tier.key] ? 'Show less' : `Show ${tier.bundle.length - 4} more`}
+                          </button>
+                        )}
                       </div>
                       {!!tier.bundle.length && (
                         <button
@@ -384,26 +448,23 @@ export default function ProductDetailPage() {
               </div>
             </section>
 
-            <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
-              <h2 className="text-lg font-extrabold text-slate-900">Budget Completion Suggestions</h2>
-              <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#d5dded] bg-[#f8fbff] px-3 py-1 text-xs font-semibold text-slate-700">
-                <Wallet className="h-3.5 w-3.5 text-[#1A2A54]" />
-                Remaining balanced-tier budget: <span className="font-extrabold text-[#1A2A54]">{formatPrice(budgetCompletionSuggestions.remaining)}</span>
-              </div>
-              <div className="mt-3 space-y-2">
-                {budgetCompletionSuggestions.items.map((item) => (
-                  <div key={`budget-${item.id}`} className="flex items-center justify-between rounded-lg border border-[#d5dded] bg-[#f8fbff] px-3 py-2">
-                    <Link to={`/products/${item.id}`} className="text-sm font-semibold text-slate-800">{item.name}</Link>
-                    <span className="text-xs font-bold text-[#FF6B00]">{formatPrice(item.price)}</span>
-                  </div>
-                ))}
-                {!budgetCompletionSuggestions.items.length && (
-                  <p className="rounded-lg border border-dashed border-[#d5dded] bg-[#fcfdff] px-3 py-2 text-sm text-slate-500">
-                    No high-fit items currently match the remaining amount. Try a higher tier for broader options.
-                  </p>
-                )}
-              </div>
-            </section>
+            {budgetCompletionSuggestions.items.length > 0 && (
+              <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
+                <h2 className="text-lg font-extrabold text-slate-900">Budget Completion Suggestions</h2>
+                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#d5dded] bg-[#f8fbff] px-3 py-1 text-xs font-semibold text-slate-700">
+                  <Wallet className="h-3.5 w-3.5 text-[#1A2A54]" />
+                  Remaining balanced-tier budget: <span className="font-extrabold text-[#1A2A54]">{formatPrice(budgetCompletionSuggestions.remaining)}</span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {budgetCompletionSuggestions.items.map((item) => (
+                    <div key={`budget-${item.id}`} className="flex items-center justify-between rounded-lg border border-[#d5dded] bg-[#f8fbff] px-3 py-2">
+                      <Link to={`/products/${item.id}`} className="text-sm font-semibold text-slate-800">{item.name}</Link>
+                      <span className="text-xs font-bold text-[#FF6B00]">{formatPrice(item.price)}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section className="mt-6 rounded-2xl border border-[#d5dded] bg-white p-6">
               <h2 className="text-lg font-extrabold text-slate-900">Why This Was Recommended</h2>

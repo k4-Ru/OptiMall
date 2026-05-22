@@ -12,17 +12,20 @@ import {
   Truck,
   User
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useCommerce } from '../lib/commerceContext';
+import { useAuth } from '@clerk/clerk-react';
 
 function formatPrice(value) {
   return `₱${Number(value || 0).toLocaleString()}`;
 }
 
 export default function AccountPage() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
   const { user } = useUser();
   const { signOut } = useClerk();
   const { orders, cartCount, cartTotal } = useCommerce();
@@ -41,6 +44,34 @@ export default function AccountPage() {
   const isPaid = latestOrder ? (latestOrder.payment_status === 'done' || latestOrder.status === 'paid') : false;
   const isShipped = latestOrder ? !!latestOrder.tracking_steps?.find((s) => s.key === 'shipped')?.done : false;
   const isDelivered = latestOrder ? !!latestOrder.tracking_steps?.find((s) => s.key === 'delivered')?.done : false;
+
+  useEffect(() => {
+    let active = true;
+    async function loadAccess() {
+      if (!isLoaded || !isSignedIn) {
+        if (active) setIsAdmin(false);
+        return;
+      }
+      try {
+        const token = await getToken();
+        if (!token) {
+          if (active) setIsAdmin(false);
+          return;
+        }
+        const response = await fetch('/api/auth/access', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (active) setIsAdmin(Boolean(data?.is_admin || String(data?.role || '').toLowerCase() === 'admin'));
+      } catch {
+        if (active) setIsAdmin(false);
+      }
+    }
+    loadAccess();
+    return () => {
+      active = false;
+    };
+  }, [getToken, isLoaded, isSignedIn]);
 
   return (
     <div className="min-h-screen pb-12">
@@ -71,6 +102,8 @@ export default function AccountPage() {
           </p>
         </section>
 
+        {!isAdmin && (
+          <>
         {/* Stats Grid */}
         <section className="mt-5 grid gap-4 sm:grid-cols-3">
           <article className="flex items-center justify-between rounded-xl border border-[#d5dded] bg-white p-5 shadow-sm">
@@ -252,6 +285,63 @@ export default function AccountPage() {
             </div>
           </div>
         </section>
+          </>
+        )}
+
+        {isAdmin && (
+          <section className="mt-5">
+            <div className="rounded-xl border border-[#d5dded] bg-white p-5 shadow-sm">
+              <h2 className="text-xs font-extrabold uppercase tracking-[0.15em] text-[#1A2A54] border-b border-slate-100 pb-3">
+                Profile Details
+              </h2>
+
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-[#f8fafc] p-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white border border-slate-200 text-[#1A2A54]">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Full Name</p>
+                    <p className="text-sm font-bold text-slate-800">{user?.fullName || 'Not set'}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-[#f8fafc] p-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white border border-slate-200 text-[#1A2A54]">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Address</p>
+                    <p className="text-sm font-bold text-slate-800 break-all">{user?.primaryEmailAddress?.emailAddress || 'Not set'}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-[#f8fafc] p-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white border border-slate-200 text-[#1A2A54]">
+                    <Calendar className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Member Since</p>
+                    <p className="text-sm font-bold text-slate-800">
+                      {user?.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => signOut({ redirectUrl: '/' })}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 py-3 text-sm font-extrabold uppercase tracking-wider text-red-600 transition hover:bg-red-100 hover:text-red-700 active:scale-[0.98]"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

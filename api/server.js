@@ -273,10 +273,11 @@ async function ensureUserRecord(req, res, next) {
     );
 
     const [rows] = await pool.query(
-      'SELECT id, is_flagged, flagged_at, flag_reason FROM users WHERE clerk_user_id = ? LIMIT 1',
+      'SELECT id, role, is_flagged, flagged_at, flag_reason FROM users WHERE clerk_user_id = ? LIMIT 1',
       [req.auth.userId]
     );
     req.auth.dbUserId = rows?.[0]?.id || null;
+    req.auth.role = String(rows?.[0]?.role || 'customer').toLowerCase();
     req.auth.isFlagged = Number(rows?.[0]?.is_flagged || 0) === 1;
     req.auth.flaggedAt = rows?.[0]?.flagged_at || null;
     req.auth.flagReason = rows?.[0]?.flag_reason || null;
@@ -294,6 +295,18 @@ async function ensureUserRecord(req, res, next) {
     logRouteError('auth/ensureUserRecord', req, error);
     return sendInternalError(res, req, 'Failed to sync user');
   }
+}
+
+function requireAdmin(req, res, next) {
+  const role = String(req.auth?.role || '').toLowerCase();
+  if (role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden: admin access required',
+      error_type: 'ADMIN_REQUIRED',
+      request_id: req.requestId,
+    });
+  }
+  return next();
 }
 
 async function getRecentUserActivity(pool, dbUserId) {
@@ -314,6 +327,7 @@ async function getRecentUserActivity(pool, dbUserId) {
     event_type: row.event_type,
     product_id: row.product_id,
     search_query: row.search_query,
+    created_at: row.created_at || null,
   }));
 
   return {
@@ -342,7 +356,8 @@ async function getUserAbuseSnapshot(pool, userId) {
        SUM(CASE WHEN event_type = 'purchase' AND created_at >= NOW() - INTERVAL 10 MINUTE THEN 1 ELSE 0 END) AS purchase_10m,
        SUM(CASE WHEN event_type = 'purchase' AND created_at >= NOW() - INTERVAL 1 HOUR THEN 1 ELSE 0 END) AS purchase_1h
      FROM user_activity
-     WHERE user_id = ?`,
+     WHERE user_id = ?
+       AND user_id IN (SELECT id FROM users WHERE COALESCE(is_flagged, 0) = 0)`,
     [uid]
   );
 
@@ -352,6 +367,7 @@ async function getUserAbuseSnapshot(pool, userId) {
        COALESCE(SUM(total_amount), 0) AS spend_24h
      FROM orders
      WHERE user_id = ?
+       AND user_id IN (SELECT id FROM users WHERE COALESCE(is_flagged, 0) = 0)
        AND created_at >= NOW() - INTERVAL 24 HOUR`,
     [uid]
   );
@@ -409,6 +425,26 @@ async function flagUserAsSuspicious(pool, userId, reason) {
      WHERE id = ?`,
     [String(reason || 'suspicious_activity').slice(0, 255), uid]
   );
+  await revokeFlaggedUserSignals(pool, uid);
+}
+
+async function revokeFlaggedUserSignals(pool, userId) {
+  const uid = Number(userId || 0);
+  if (!uid) return;
+  const [rows] = await pool.query(
+    `SELECT DISTINCT product_id
+     FROM user_activity
+     WHERE user_id = ?
+       AND product_id IS NOT NULL`,
+    [uid]
+  );
+  const touchedProductIds = rows
+    .map((row) => Number(row?.product_id || 0))
+    .filter((id) => id > 0);
+  for (const productId of touchedProductIds) {
+    // Recompute from current non-flagged user activity only.
+    await refreshProductPopularityScore(pool, productId);
+  }
 }
 
 function buildOutcomeBoostMap(products, activityEvents) {
@@ -534,6 +570,56 @@ function applyOutcomeBoost(products, activityEvents, userEmbedding = null) {
   }));
 }
 
+function buildBundleSignature(items = []) {
+  const normalized = (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      product_id: Number(item?.product_id || item?.id || 0),
+      quantity: Math.max(1, Number(item?.quantity || item?.qty || 1)),
+    }))
+    .filter((item) => item.product_id > 0)
+    .sort((a, b) => (a.product_id - b.product_id) || (a.quantity - b.quantity));
+  const base = normalized.map((item) => `${item.product_id}:${item.quantity}`).join('|');
+  if (!base) return '';
+  return crypto.createHash('sha256').update(base).digest('hex');
+}
+
+async function resolveBundleIdBySignature(connOrPool, userId, signature) {
+  const uid = Number(userId || 0);
+  const sig = String(signature || '').trim();
+  if (!uid || !sig) return null;
+  const [bundles] = await connOrPool.query(
+    `SELECT id
+     FROM bundles
+     WHERE user_id = ?
+     ORDER BY created_at DESC
+     LIMIT 500`,
+    [uid]
+  );
+  const bundleIds = (bundles || []).map((row) => Number(row?.id || 0)).filter((id) => id > 0);
+  if (!bundleIds.length) return null;
+  const [rows] = await connOrPool.query(
+    `SELECT bundle_id, product_id, quantity
+     FROM bundle_items
+     WHERE bundle_id IN (${bundleIds.map(() => '?').join(',')})`,
+    bundleIds
+  );
+  const byBundle = new Map();
+  for (const row of rows || []) {
+    const bid = Number(row?.bundle_id || 0);
+    if (!bid) continue;
+    if (!byBundle.has(bid)) byBundle.set(bid, []);
+    byBundle.get(bid).push({
+      product_id: Number(row?.product_id || 0),
+      quantity: Math.max(1, Number(row?.quantity || 1)),
+    });
+  }
+  for (const bid of bundleIds) {
+    const candidateSig = buildBundleSignature(byBundle.get(bid) || []);
+    if (candidateSig && candidateSig === sig) return bid;
+  }
+  return null;
+}
+
 async function getLatestUserEmbedding(pool, userId) {
   const uid = Number(userId || 0);
   if (!uid) return null;
@@ -554,7 +640,7 @@ async function getLatestUserEmbedding(pool, userId) {
 async function getActiveModelMetadata(pool) {
   try {
     const [rows] = await pool.query(
-      `SELECT id, model_key, model_version, framework, status, activated_at
+      `SELECT id, model_key, model_version, framework, status, artifact_uri, activated_at
        FROM model_registry
        WHERE status = 'active'
        ORDER BY activated_at DESC, updated_at DESC
@@ -1033,8 +1119,11 @@ async function refreshProductPopularityScore(pool, productId) {
           ELSE 0.1
         END * COALESCE(weight_score, 1)
       ), 0) AS weighted_score
-     FROM user_activity
-     WHERE product_id = ?`,
+     FROM user_activity ua
+     JOIN users u ON u.id = ua.user_id
+     WHERE ua.product_id = ?
+       AND ua.user_id IS NOT NULL
+       AND COALESCE(u.is_flagged, 0) = 0`,
     [pid]
   );
 
@@ -1400,6 +1489,7 @@ app.post('/api/recommendations', requireClerkAuth, ensureUserRecord, async (req,
         for (const ev of activityEvents) {
           const pid = Number(ev?.product_id || 0);
           if (!pid) continue;
+          exposureCountByProduct.set(pid, (exposureCountByProduct.get(pid) || 0) + 1);
           const product = byProduct.get(pid);
           if (!product) continue;
           const cat = String(product?.category || '').toLowerCase();
@@ -1409,6 +1499,11 @@ app.post('/api/recommendations', requireClerkAuth, ensureUserRecord, async (req,
           if (price > 0) {
             avgPrice += price;
             priceCount += 1;
+          }
+          const ts = ev?.created_at ? new Date(ev.created_at).getTime() : NaN;
+          if (Number.isFinite(ts) && ts > 0) {
+            const prev = Number(lastEventAtByProduct.get(pid) || 0);
+            if (ts > prev) lastEventAtByProduct.set(pid, ts);
           }
         }
         const baseSuggestions = boostedProducts.map((product) => ({
@@ -1618,6 +1713,7 @@ app.post('/api/intelligence/pipeline', requireClerkAuth, ensureUserRecord, async
         for (const ev of (normalizedPayload.activity_events || [])) {
           const pid = Number(ev?.product_id || 0);
           if (!pid) continue;
+          exposureCountByProduct.set(pid, (exposureCountByProduct.get(pid) || 0) + 1);
           const product = byProduct.get(pid);
           if (!product) continue;
           const cat = String(product?.category || '').toLowerCase();
@@ -1628,7 +1724,11 @@ app.post('/api/intelligence/pipeline', requireClerkAuth, ensureUserRecord, async
             avgPrice += price;
             priceCount += 1;
           }
-          lastEventAtByProduct.set(pid, Date.now());
+          const ts = ev?.created_at ? new Date(ev.created_at).getTime() : NaN;
+          if (Number.isFinite(ts) && ts > 0) {
+            const prev = Number(lastEventAtByProduct.get(pid) || 0);
+            if (ts > prev) lastEventAtByProduct.set(pid, ts);
+          }
         }
         const context = {
           activitySignals: buildActivitySignals(normalizedPayload.activity_events || []),
@@ -1807,14 +1907,73 @@ app.post('/api/bundles/save', requireClerkAuth, ensureUserRecord, async (req, re
       return res.status(400).json({ error: 'No valid bundle items' });
     }
 
+    const incomingSignature = buildBundleSignature(normalizedItems);
+    if (!incomingSignature) {
+      return res.status(400).json({ error: 'Unable to derive bundle signature' });
+    }
+
     const pool = getPool();
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      const [existingBundles] = await conn.query(
+        `SELECT id
+         FROM bundles
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT 400`,
+        [req.auth.dbUserId || null]
+      );
+      let existingBundleId = null;
+      if (Array.isArray(existingBundles) && existingBundles.length) {
+        const bundleIds = existingBundles
+          .map((row) => Number(row?.id || 0))
+          .filter((id) => id > 0);
+        if (bundleIds.length) {
+          const [rows] = await conn.query(
+            `SELECT bundle_id, product_id, quantity
+             FROM bundle_items
+             WHERE bundle_id IN (${bundleIds.map(() => '?').join(',')})`,
+            bundleIds
+          );
+          const byBundle = new Map();
+          for (const row of rows || []) {
+            const bid = Number(row?.bundle_id || 0);
+            if (!bid) continue;
+            if (!byBundle.has(bid)) byBundle.set(bid, []);
+            byBundle.get(bid).push({
+              product_id: Number(row?.product_id || 0),
+              quantity: Math.max(1, Number(row?.quantity || 1)),
+            });
+          }
+          for (const bid of bundleIds) {
+            const sig = buildBundleSignature(byBundle.get(bid) || []);
+            if (sig && sig === incomingSignature) {
+              existingBundleId = bid;
+              break;
+            }
+          }
+        }
+      }
+
+      if (existingBundleId) {
+        await conn.query(
+          `UPDATE bundles
+           SET name = ?,
+               description = ?,
+               bundle_type = ?,
+               estimated_total_price = ?
+           WHERE id = ?`,
+          [safeName, safeDesc, safeType, safeTotal, existingBundleId]
+        );
+        await conn.commit();
+        return res.status(200).json({ id: existingBundleId, items_saved: normalizedItems.length, deduped: true });
+      }
+
       const [insertBundle] = await conn.query(
         `INSERT INTO bundles (user_id, name, description, bundle_type, estimated_total_price)
          VALUES (?, ?, ?, ?, ?)`,
-        [req.userDbId || null, safeName, safeDesc, safeType, safeTotal]
+        [req.auth.dbUserId || null, safeName, safeDesc, safeType, safeTotal]
       );
       const bundleId = Number(insertBundle?.insertId || 0);
       for (const item of normalizedItems) {
@@ -1824,7 +1983,7 @@ app.post('/api/bundles/save', requireClerkAuth, ensureUserRecord, async (req, re
         );
       }
       await conn.commit();
-      return res.status(201).json({ id: bundleId, items_saved: normalizedItems.length });
+      return res.status(201).json({ id: bundleId, items_saved: normalizedItems.length, deduped: false });
     } catch (error) {
       await conn.rollback();
       throw error;
@@ -1834,6 +1993,110 @@ app.post('/api/bundles/save', requireClerkAuth, ensureUserRecord, async (req, re
   } catch (error) {
     logRouteError('/api/bundles/save', req, error);
     return sendInternalError(res, req, 'Failed to save bundle');
+  }
+});
+
+app.post('/api/bundles/rate', requireClerkAuth, ensureUserRecord, async (req, res) => {
+  try {
+    const {
+      bundle_id = null,
+      scenario_key = null,
+      goal = null,
+      rating_score,
+      post_purchase_rating = null,
+      reason_tags = [],
+      generation_context = null,
+      rating_stage = 'generated',
+      items = [],
+      source = 'smart_mode',
+    } = req.body || {};
+
+    const rating = Number(rating_score);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 4) {
+      return res.status(400).json({ error: 'rating_score must be an integer from 1 to 4', request_id: req.requestId });
+    }
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ error: 'items must be a non-empty array', request_id: req.requestId });
+    }
+    const safeStage = new Set(['generated', 'post_purchase']).has(String(rating_stage))
+      ? String(rating_stage)
+      : 'generated';
+    const postPurchase = post_purchase_rating == null ? null : Number(post_purchase_rating);
+    if (postPurchase != null && (!Number.isInteger(postPurchase) || postPurchase < 1 || postPurchase > 4)) {
+      return res.status(400).json({ error: 'post_purchase_rating must be an integer from 1 to 4', request_id: req.requestId });
+    }
+    const safeReasonTags = Array.isArray(reason_tags)
+      ? reason_tags.map((tag) => String(tag || '').trim().toLowerCase()).filter(Boolean).slice(0, 8)
+      : [];
+
+    const normalizedItems = items
+      .map((item) => ({
+        product_id: Number(item?.product_id || item?.id || 0),
+        quantity: Math.max(1, Number(item?.quantity || item?.qty || 1)),
+      }))
+      .filter((item) => item.product_id > 0);
+    if (!normalizedItems.length) {
+      return res.status(400).json({ error: 'No valid bundle items', request_id: req.requestId });
+    }
+
+    const signature = buildBundleSignature(normalizedItems);
+    if (!signature) {
+      return res.status(400).json({ error: 'Unable to derive bundle signature', request_id: req.requestId });
+    }
+
+    const safeSource = new Set(['smart_mode', 'product_page', 'manual']).has(String(source))
+      ? String(source)
+      : 'smart_mode';
+    let safeBundleId = bundle_id == null ? null : Number(bundle_id);
+    const safeScenario = scenario_key == null ? null : String(scenario_key).slice(0, 64);
+    const safeGoal = goal == null ? null : String(goal).slice(0, 255);
+
+    const pool = getPool();
+    if (!(Number.isFinite(safeBundleId) && safeBundleId > 0)) {
+      safeBundleId = await resolveBundleIdBySignature(pool, req.auth.dbUserId, signature);
+    }
+
+    await pool.query(
+      `INSERT INTO bundle_ratings
+       (user_id, bundle_id, scenario_key, goal_text, rating_score, post_purchase_rating, reason_tags_json, bundle_signature, bundle_payload, generation_context_json, source, rating_stage)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         bundle_id = COALESCE(VALUES(bundle_id), bundle_id),
+         scenario_key = VALUES(scenario_key),
+         goal_text = VALUES(goal_text),
+         rating_score = VALUES(rating_score),
+         post_purchase_rating = VALUES(post_purchase_rating),
+         reason_tags_json = VALUES(reason_tags_json),
+         bundle_payload = VALUES(bundle_payload),
+         generation_context_json = VALUES(generation_context_json),
+         source = VALUES(source),
+         rating_stage = VALUES(rating_stage),
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        req.auth.dbUserId,
+        Number.isFinite(safeBundleId) && safeBundleId > 0 ? safeBundleId : null,
+        safeScenario,
+        safeGoal,
+        rating,
+        postPurchase,
+        JSON.stringify(safeReasonTags),
+        signature,
+        JSON.stringify(normalizedItems),
+        generation_context == null ? null : JSON.stringify(generation_context),
+        safeSource,
+        safeStage,
+      ]
+    );
+
+    return res.status(201).json({
+      ok: true,
+      rating_score: rating,
+      bundle_signature: signature,
+      request_id: req.requestId,
+    });
+  } catch (error) {
+    logRouteError('/api/bundles/rate', req, error);
+    return sendInternalError(res, req, 'Failed to save bundle rating');
   }
 });
 
@@ -1928,8 +2191,143 @@ app.get('/api/auth/access', requireClerkAuth, ensureUserRecord, async (req, res)
   return res.status(200).json({
     allowed: true,
     user_id: req.auth.dbUserId || null,
+    role: req.auth.role || 'customer',
+    is_admin: String(req.auth.role || '').toLowerCase() === 'admin',
     request_id: req.requestId,
   });
+});
+
+app.get('/api/admin/report', requireClerkAuth, ensureUserRecord, requireAdmin, async (req, res) => {
+  try {
+    const pool = getPool();
+    const [[kpis]] = await pool.query(
+      `SELECT
+         (SELECT COUNT(*) FROM users) AS total_users,
+         (SELECT COUNT(*) FROM products) AS total_products,
+         (SELECT COUNT(*) FROM orders) AS total_orders,
+         (SELECT COALESCE(SUM(total_amount), 0) FROM orders) AS total_revenue,
+         (SELECT COUNT(*) FROM users WHERE is_flagged = 1) AS flagged_users`
+    );
+
+    const [flaggedUsers] = await pool.query(
+      `SELECT id, clerk_user_id, email, name, role, flagged_at, flag_reason
+       FROM users
+       WHERE is_flagged = 1
+       ORDER BY flagged_at DESC, updated_at DESC
+       LIMIT 100`
+    );
+
+    const [productAnalytics] = await pool.query(
+      `SELECT
+         p.id,
+         p.name,
+         p.category,
+         p.price,
+         SUM(CASE WHEN ua.event_type = 'view_product' THEN 1 ELSE 0 END) AS views,
+         SUM(CASE WHEN ua.event_type = 'click_product' THEN 1 ELSE 0 END) AS clicks,
+         SUM(CASE WHEN ua.event_type = 'add_to_cart' THEN 1 ELSE 0 END) AS add_to_carts,
+         SUM(CASE WHEN ua.event_type = 'purchase' THEN 1 ELSE 0 END) AS purchases
+       FROM products p
+       LEFT JOIN user_activity ua ON ua.product_id = p.id
+       GROUP BY p.id, p.name, p.category, p.price
+       ORDER BY purchases DESC, add_to_carts DESC, views DESC
+       LIMIT 100`
+    );
+
+    return res.status(200).json({
+      kpis: {
+        total_users: Number(kpis?.total_users || 0),
+        total_products: Number(kpis?.total_products || 0),
+        total_orders: Number(kpis?.total_orders || 0),
+        total_revenue: Number(kpis?.total_revenue || 0),
+        flagged_users: Number(kpis?.flagged_users || 0),
+      },
+      flagged_users: flaggedUsers || [],
+      product_analytics: (productAnalytics || []).map((row) => ({
+        id: Number(row.id || 0),
+        name: row.name,
+        category: row.category,
+        price: Number(row.price || 0),
+        views: Number(row.views || 0),
+        clicks: Number(row.clicks || 0),
+        add_to_carts: Number(row.add_to_carts || 0),
+        purchases: Number(row.purchases || 0),
+      })),
+      request_id: req.requestId,
+    });
+  } catch (error) {
+    logRouteError('/api/admin/report', req, error);
+    return sendInternalError(res, req, 'Failed to load admin report');
+  }
+});
+
+app.patch('/api/admin/users/:userId/flag', requireClerkAuth, ensureUserRecord, requireAdmin, async (req, res) => {
+  try {
+    const userId = Number(req.params.userId || 0);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'Invalid user id', request_id: req.requestId });
+    }
+
+    const shouldFlag = Boolean(req.body?.is_flagged);
+    const reasonRaw = String(req.body?.flag_reason || '').trim();
+    const reason = reasonRaw.slice(0, 255);
+
+    const pool = getPool();
+    const [existingRows] = await pool.query(
+      `SELECT id, clerk_user_id, email, name, role, is_flagged, flagged_at, flag_reason
+       FROM users
+       WHERE id = ?
+       LIMIT 1`,
+      [userId]
+    );
+    const existing = existingRows?.[0];
+    if (!existing) {
+      return res.status(404).json({ error: 'User not found', request_id: req.requestId });
+    }
+
+    await pool.query(
+      `UPDATE users
+       SET is_flagged = ?,
+           flagged_at = ?,
+           flag_reason = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        shouldFlag ? 1 : 0,
+        shouldFlag ? new Date() : null,
+        shouldFlag ? (reason || 'Flagged by admin') : null,
+        userId
+      ]
+    );
+    if (shouldFlag) {
+      await revokeFlaggedUserSignals(pool, userId);
+    }
+
+    const [updatedRows] = await pool.query(
+      `SELECT id, clerk_user_id, email, name, role, is_flagged, flagged_at, flag_reason
+       FROM users
+       WHERE id = ?
+       LIMIT 1`,
+      [userId]
+    );
+    const user = updatedRows?.[0] || null;
+    return res.status(200).json({
+      user: user ? {
+        id: Number(user.id || 0),
+        clerk_user_id: user.clerk_user_id || null,
+        email: user.email || null,
+        name: user.name || null,
+        role: user.role || 'customer',
+        is_flagged: Boolean(user.is_flagged),
+        flagged_at: user.flagged_at || null,
+        flag_reason: user.flag_reason || null,
+      } : null,
+      request_id: req.requestId,
+    });
+  } catch (error) {
+    logRouteError('/api/admin/users/:userId/flag', req, error);
+    return sendInternalError(res, req, 'Failed to update user flag status');
+  }
 });
 
 app.get('/api/cart', requireClerkAuth, ensureUserRecord, async (req, res) => {
@@ -2031,7 +2429,7 @@ app.put('/api/cart', requireClerkAuth, ensureUserRecord, async (req, res) => {
   }
 });
 
-app.get('/api/bundles/popular', async (req, res) => {
+app.get('/api/bundles/popular', requireClerkAuth, ensureUserRecord, async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(20, Number(req.query.limit || 6)));
     const pool = getPool();

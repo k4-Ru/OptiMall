@@ -11,7 +11,8 @@ function getBearerToken(req) {
 
 export async function requireClerkAuth(req, res, next) {
   try {
-    if (process.env.OPTIMALL_TEST_BYPASS_AUTH === '1') {
+    const allowTestBypass = process.env.NODE_ENV === 'test' && process.env.OPTIMALL_TEST_BYPASS_AUTH === '1';
+    if (allowTestBypass) {
       req.auth = {
         userId: req.headers['x-test-user-id'] || 'test-user',
         sessionId: 'test-session',

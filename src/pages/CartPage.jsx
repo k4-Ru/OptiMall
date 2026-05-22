@@ -24,7 +24,7 @@ function formatPrice(value) {
 
 export default function CartPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedEntryId, setSelectedEntryId] = useState('__all__');
+  const [selectedEntryId, setSelectedEntryId] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
   const navigate = useNavigate();
@@ -41,22 +41,26 @@ export default function CartPage() {
   } = useCommerce();
 
   const selectedEntry = useMemo(() => {
-    if (!cart.length || selectedEntryId === '__all__') return null;
+    if (!cart.length || !selectedEntryId || selectedEntryId === '__all__') return null;
     return cart.find((entry) => String(entry.id) === String(selectedEntryId)) || null;
   }, [cart, selectedEntryId]);
+  const isAllSelected = selectedEntryId === '__all__';
+  const hasSelection = Boolean(selectedEntry) || isAllSelected;
 
   const breakdown = useMemo(() => {
-    const subtotal = selectedEntry
+    const subtotal = !hasSelection
+      ? 0
+      : selectedEntry
       ? Number(selectedEntry.price || 0) * Number(selectedEntry.qty || 1)
       : cartTotal;
     const serviceFee = subtotal > 0 ? 35 : 0;
     const simulatedDiscount = subtotal >= 5000 ? subtotal * 0.05 : 0;
     const grandTotal = subtotal + serviceFee - simulatedDiscount;
     return { subtotal, serviceFee, simulatedDiscount, grandTotal };
-  }, [cartTotal, selectedEntry]);
+  }, [cartTotal, selectedEntry, hasSelection]);
 
   function buildCheckoutItems() {
-    const sourceEntries = selectedEntry ? [selectedEntry] : cart;
+    const sourceEntries = selectedEntry ? [selectedEntry] : (isAllSelected ? cart : []);
     const items = [];
     for (const entry of sourceEntries) {
       if (entry?.entry_type === 'bundle' && Array.isArray(entry.bundle_items) && entry.bundle_items.length) {
@@ -82,6 +86,7 @@ export default function CartPage() {
     if (checkoutLoading) return;
     setCheckoutError('');
     try {
+      if (!hasSelection) throw new Error('Select an item or use Select all before checkout.');
       if (!isSignedIn) throw new Error('Sign in first to checkout.');
       const token = await getToken();
       if (!token) throw new Error('Missing auth token.');
@@ -98,7 +103,7 @@ export default function CartPage() {
         token
       );
 
-      const order = checkoutSelection(selectedEntry?.id || '__all__');
+      const order = checkoutSelection(selectedEntry?.id || (isAllSelected ? '__all__' : ''));
       if (order) navigate(`/orders/${order.id}`);
     } catch (err) {
       const message = String(err?.message || 'Checkout failed.');
@@ -180,10 +185,10 @@ export default function CartPage() {
               <div className="mt-3 flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedEntryId('__all__')}
-                  className={`rounded-lg border px-3 py-1 text-[11px] font-bold ${selectedEntryId === '__all__' ? 'border-[#1A2A54] bg-[#1A2A54] text-white' : 'border-[#d5dded] bg-white text-slate-700'}`}
+                  onClick={() => setSelectedEntryId((prev) => (prev === '__all__' ? '' : '__all__'))}
+                  className={`rounded-lg border px-3 py-1 text-[11px] font-bold ${isAllSelected ? 'border-[#1A2A54] bg-[#1A2A54] text-white' : 'border-[#d5dded] bg-white text-slate-700'}`}
                 >
-                  Checkout all items
+                  {isAllSelected ? 'Deselect all' : 'Select all'}
                 </button>
               </div>
               
@@ -227,25 +232,30 @@ export default function CartPage() {
                       
                       <div className="flex items-center gap-4">
                         {/* Quantity selector */}
-                        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
-                          <button
-                            type="button"
-                            onClick={() => updateQty(item.id, item.qty - 1)}
-                            disabled={item.qty <= 1 || item.entry_type === 'bundle'}
-                            className="flex h-7 w-7 items-center justify-center rounded bg-[#f8fafc] text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                          <span className="w-8 text-center text-xs font-extrabold text-slate-800">{item.qty}</span>
-                          <button
-                            type="button"
-                            onClick={() => updateQty(item.id, item.qty + 1)}
-                            disabled={item.entry_type === 'bundle'}
-                            className="flex h-7 w-7 items-center justify-center rounded bg-[#f8fafc] text-slate-600 transition hover:bg-slate-100"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        </div>
+                        {item.entry_type === 'bundle' ? (
+                          <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-extrabold text-slate-700">
+                            Qty: {item.qty}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
+                            <button
+                              type="button"
+                              onClick={() => updateQty(item.id, item.qty - 1)}
+                              disabled={item.qty <= 1}
+                              className="flex h-7 w-7 items-center justify-center rounded bg-[#f8fafc] text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="w-8 text-center text-xs font-extrabold text-slate-800">{item.qty}</span>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(item.id, item.qty + 1)}
+                              className="flex h-7 w-7 items-center justify-center rounded bg-[#f8fafc] text-slate-600 transition hover:bg-slate-100"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                         
                         {/* Remove Button */}
                         <div className="flex items-center gap-2">
@@ -289,7 +299,9 @@ export default function CartPage() {
                 <div className="rounded-lg border border-[#d5dded] bg-[#f8fbff] px-3 py-2 text-[11px] font-semibold text-slate-600">
                   {selectedEntry
                     ? `Selected entry: ${selectedEntry.name}`
-                    : 'Selected entry: All cart items'}
+                    : isAllSelected
+                      ? 'Selected entry: All cart items'
+                      : 'Selected entry: None'}
                 </div>
                 <div className="flex justify-between font-medium text-slate-550">
                   <span className="text-slate-500">Subtotal</span>
@@ -324,7 +336,7 @@ export default function CartPage() {
                 type="button"
                 onClick={handleCheckout}
                 disabled={checkoutLoading}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#FF6B00] py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-[#FF6B00]/25 transition duration-150 hover:bg-[#E65C00] active:scale-[0.98]"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#FF6B00] py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-[#FF6B00]/25 transition duration-150 hover:bg-[#E65C00] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <CheckCircle2 className="h-4 w-4" />
                 {checkoutLoading ? 'Processing Checkout...' : 'Proceed to Checkout'}

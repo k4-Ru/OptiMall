@@ -3,6 +3,16 @@ import { buildPipelinePayload } from '../../shared/intelligenceContract.js';
 const API_BASE = '/api';
 const LAST_RECOMMENDATION_REQUEST_ID_KEY = 'optimall_last_recommendation_request_id';
 
+function createApiError(response, data) {
+  const message = data?.error || data?.message || `Request failed: ${response.status}`;
+  const error = new Error(message);
+  error.status = Number(response?.status || 0);
+  error.error_type = data?.error_type || null;
+  error.details = data?.details ?? null;
+  error.meta = data?.meta || null;
+  return error;
+}
+
 function readLastRecommendationRequestId() {
   try {
     const value = localStorage.getItem(LAST_RECOMMENDATION_REQUEST_ID_KEY);
@@ -32,7 +42,7 @@ async function request(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data?.error || `Request failed: ${response.status}`);
+    throw createApiError(response, data);
   }
 
   return data;
@@ -104,6 +114,17 @@ export function postSaveBundle(payload, token) {
   });
 }
 
+export function postBundleRating(payload, token) {
+  return request('/bundles/rate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
 export function getPopularBundles(limit = 6) {
   const safeLimit = Math.max(1, Math.min(20, Number(limit) || 6));
   return request(`/bundles/popular?limit=${safeLimit}`);
@@ -131,6 +152,25 @@ export function getCart(token) {
 export function putCart(payload, token) {
   return request('/cart', {
     method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+export function getAdminReport(token) {
+  return request('/admin/report', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function patchAdminUserFlag(userId, payload, token) {
+  return request(`/admin/users/${userId}/flag`, {
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,

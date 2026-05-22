@@ -223,12 +223,6 @@ export default function NormalMode({
     </p>
     {loadingRecommendations && <p className="text-xs text-[var(--ink-soft)]">Refreshing recommendations...</p>}
     {!!recommendationError && <p className="text-xs text-red-600">{recommendationError}</p>}
-    {!!recommendationMeta?.active_model?.model_version && (
-      <p className="text-[11px] font-semibold text-[var(--ink-soft)]">
-        Model-powered: {recommendationMeta.active_model.model_version}
-        {recommendationMeta?.model_applied ? ' (applied)' : ' (metadata only)'}
-      </p>
-    )}
     <div className="opti-enter-soft opti-stagger-2 flex min-h-[260px] gap-3 overflow-x-auto pb-2 scrollbar-hide">
       {loadingProducts && Array.from({ length: 6 }).map((_, idx) => (
         <div key={`rec-skeleton-${idx}`} className="opti-shimmer w-[180px] min-h-[252px] shrink-0 animate-pulse rounded-xl border border-[color:rgba(26,42,84,0.16)] bg-white p-3">

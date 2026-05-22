@@ -1,12 +1,43 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import { useCommerce } from '../lib/commerceContext';
 
 export default function Header({ mode, onModeChange }) {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const { cartCount } = useCommerce();
   const cartBadgeRef = useRef(null);
   const prevCartCountRef = useRef(cartCount);
   const modeIndex = mode === 'smart' ? 1 : 0;
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function run() {
+      if (!isLoaded || !isSignedIn) {
+        if (active) setIsAdmin(false);
+        return;
+      }
+      try {
+        const token = await getToken();
+        if (!token) {
+          if (active) setIsAdmin(false);
+          return;
+        }
+        const response = await fetch('/api/auth/access', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (active) setIsAdmin(Boolean(data?.is_admin || String(data?.role || '').toLowerCase() === 'admin'));
+      } catch {
+        if (active) setIsAdmin(false);
+      }
+    }
+    run();
+    return () => {
+      active = false;
+    };
+  }, [isLoaded, isSignedIn, getToken]);
 
   useEffect(() => {
     function handleFlyToCart(event) {
@@ -74,15 +105,17 @@ export default function Header({ mode, onModeChange }) {
         </Link>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <Link
-            to="/cart"
-            className="relative rounded-full bg-white/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.11em] transition-colors hover:bg-white/20 sm:px-4 sm:text-xs"
-          >
-            Cart
-            <span ref={cartBadgeRef} className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#FF6B00] px-1 text-[10px] text-white">
-              {cartCount}
-            </span>
-          </Link>
+          {!isAdmin && (
+            <Link
+              to="/cart"
+              className="relative rounded-full bg-white/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.11em] transition-colors hover:bg-white/20 sm:px-4 sm:text-xs"
+            >
+              Cart
+              <span ref={cartBadgeRef} className="absolute -right-2 -top-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#FF6B00] px-1 text-[10px] text-white">
+                {cartCount}
+              </span>
+            </Link>
+          )}
 
           <Link
             to="/account"

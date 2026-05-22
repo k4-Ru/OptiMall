@@ -70,16 +70,20 @@ async function main() {
       FROM (
         SELECT ua.user_id, ua.product_id, ua.created_at
         FROM user_activity ua
+        JOIN users u ON u.id = ua.user_id
         WHERE ua.user_id IS NOT NULL
           AND ua.product_id IS NOT NULL
+          AND COALESCE(u.is_flagged, 0) = 0
           AND ua.created_at >= DATE_SUB(?, INTERVAL ? DAY)
 
         UNION ALL
 
         SELECT re.user_id, re.product_id, re.created_at
         FROM recommendation_exposures re
+        JOIN users u ON u.id = re.user_id
         WHERE re.user_id IS NOT NULL
           AND re.product_id IS NOT NULL
+          AND COALESCE(u.is_flagged, 0) = 0
           AND re.created_at >= DATE_SUB(?, INTERVAL ? DAY)
       ) t
       GROUP BY user_id, product_id
@@ -136,7 +140,9 @@ async function main() {
         SELECT ua.user_id, LOWER(COALESCE(p.category, '')) AS category, COUNT(*) AS c
         FROM user_activity ua
         JOIN products p ON p.id = ua.product_id
+        JOIN users u ON u.id = ua.user_id
         WHERE ua.user_id IN (${userIds.map(() => '?').join(',')})
+          AND COALESCE(u.is_flagged, 0) = 0
           AND ua.created_at >= DATE_SUB(?, INTERVAL ? DAY)
         GROUP BY ua.user_id, LOWER(COALESCE(p.category, ''))
         `,
@@ -160,7 +166,9 @@ async function main() {
         SELECT ua.user_id, AVG(COALESCE(p.price, 0)) AS avg_price
         FROM user_activity ua
         JOIN products p ON p.id = ua.product_id
+        JOIN users u ON u.id = ua.user_id
         WHERE ua.user_id IN (${userIds.map(() => '?').join(',')})
+          AND COALESCE(u.is_flagged, 0) = 0
           AND ua.created_at >= DATE_SUB(?, INTERVAL ? DAY)
         GROUP BY ua.user_id
         `,
@@ -189,6 +197,7 @@ async function main() {
         FROM user_activity
         WHERE user_id = ?
           AND product_id = ?
+          AND user_id IN (SELECT id FROM users WHERE COALESCE(is_flagged, 0) = 0)
           AND created_at >= DATE_SUB(?, INTERVAL ? DAY)
         `,
         [uid, pid, featureDate, windowDays]
@@ -200,6 +209,7 @@ async function main() {
         FROM recommendation_exposures
         WHERE user_id = ?
           AND product_id = ?
+          AND user_id IN (SELECT id FROM users WHERE COALESCE(is_flagged, 0) = 0)
           AND created_at >= DATE_SUB(?, INTERVAL ? DAY)
         `,
         [uid, pid, featureDate, windowDays]
@@ -214,6 +224,7 @@ async function main() {
         FROM recommendation_outcomes
         WHERE user_id = ?
           AND product_id = ?
+          AND user_id IN (SELECT id FROM users WHERE COALESCE(is_flagged, 0) = 0)
           AND created_at >= DATE_SUB(?, INTERVAL ? DAY)
         `,
         [uid, pid, featureDate, windowDays]

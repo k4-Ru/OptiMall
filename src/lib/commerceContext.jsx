@@ -22,6 +22,24 @@ function writeJson(key, value) {
   }
 }
 
+function isSuspiciousError(error) {
+  const errorType = String(error?.error_type || '').toUpperCase();
+  if (
+    errorType === 'SUSPICIOUS_ACTIVITY_BLOCKED' ||
+    errorType === 'SUSPICIOUS_CHECKOUT_BLOCKED' ||
+    errorType === 'SUSPICIOUS_USER_BLOCKED'
+  ) {
+    return true;
+  }
+
+  const status = Number(error?.status || 0);
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    (status === 403 || status === 429) &&
+    (message.includes('suspicious') || message.includes('temporarily restricted'))
+  );
+}
+
 const CommerceContext = createContext(null);
 
 function makeOrder(items) {
@@ -116,9 +134,12 @@ export function CommerceProvider({ children }) {
   }
 
   function maybeSetSecurityNotice(error) {
-    const message = String(error?.message || '');
-    if (!message) return;
-    if (message.toLowerCase().includes('suspicious behavior') || message.toLowerCase().includes('temporarily restricted')) {
+    if (isSuspiciousError(error)) {
+      window.location.assign('/security-logout');
+      return;
+    }
+    const message = String(error?.message || '').toLowerCase();
+    if (message.includes('suspicious') || message.includes('temporarily restricted')) {
       setSecurityNotice('Security hold is active due to unusual activity. Some actions are temporarily restricted.');
     }
   }
