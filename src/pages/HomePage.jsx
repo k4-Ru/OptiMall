@@ -39,6 +39,8 @@ export default function HomePage() {
   const [activityRecommendations, setActivityRecommendations] = useState([]);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [recommendationError, setRecommendationError] = useState('');
+  const [recommendationMeta, setRecommendationMeta] = useState(null);
+  const [smartModeMeta, setSmartModeMeta] = useState(null);
 
   const [goal, setGoal] = useState('');
   const [budget, setBudget] = useState(5000);
@@ -147,6 +149,7 @@ export default function HomePage() {
     async function loadActivityRecommendations() {
       if (!isSignedIn || !products.length) {
         setActivityRecommendations([]);
+        setRecommendationMeta(null);
         return;
       }
       try {
@@ -165,6 +168,7 @@ export default function HomePage() {
         );
 
         const hasActivityContext = Boolean(result?.meta?.has_activity_context);
+        if (active) setRecommendationMeta(result?.meta || null);
         const suggestions = result?.realtime_recommendation?.suggestions || [];
         const productById = new Map(products.map((item) => [Number(item.id), item]));
         const activityBased = hasActivityContext
@@ -209,6 +213,7 @@ export default function HomePage() {
         { key: 'stretch', label: 'Stretch', budget: Math.max(500, Math.round((base * 1.25) / 100) * 100) },
       ];
       const deduped = scenarioDefs.filter((item, idx, arr) => arr.findIndex((x) => x.budget === item.budget) === idx);
+      let latestSmartMeta = null;
 
       const results = await Promise.all(
         deduped.map(async (scenario) => {
@@ -218,6 +223,7 @@ export default function HomePage() {
             products: filteredProducts,
           };
           const data = await postIntelligencePipeline(payload, token);
+          if (!latestSmartMeta && data?.meta) latestSmartMeta = data.meta;
           const optimized = data?.bundle_optimization || {};
           const productById = new Map(filteredProducts.map((item) => [Number(item.id), item]));
           const normalizedBundle = (optimized.bundle || []).map((item) => ({
@@ -250,6 +256,7 @@ export default function HomePage() {
           label: tierOrder[idx]?.label || item.label,
         }));
       setBundleScenarios(normalizedTiers);
+      setSmartModeMeta(latestSmartMeta);
 
       await postActivity({ event_type: 'search', search_query: `${goal} @ ${budget}`, weight_score: 1 }, token);
     } catch (err) {
@@ -288,6 +295,7 @@ export default function HomePage() {
             hasActivityRecommendations={activityRecommendations.length > 0}
             loadingRecommendations={loadingRecommendations}
             recommendationError={recommendationError}
+            recommendationMeta={recommendationMeta}
             recommendedProducts={recommendedProducts}
             addToCart={addToCart}
             filteredProducts={filteredProducts}
@@ -311,6 +319,7 @@ export default function HomePage() {
             loadingProducts={loadingProducts}
             error={error}
             bundleScenarios={bundleScenarios}
+            modelMeta={smartModeMeta}
             addBundleToCart={addBundleToCart}
           />
         )}

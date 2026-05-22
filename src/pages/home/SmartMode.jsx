@@ -28,6 +28,7 @@ export default function SmartMode({
   loadingProducts,
   error,
   bundleScenarios,
+  modelMeta,
   addBundleToCart,
 }) {
   const navigate = useNavigate();
@@ -181,7 +182,7 @@ export default function SmartMode({
 
   function continueFromStepOne() {
     const normalized = goalInput.trim();
-    if (normalized.length < 3) return;
+    if (!normalized) return;
     setGoalInputTouched(true);
     setGoal(normalized);
     setCurrentStep(2);
@@ -238,6 +239,12 @@ export default function SmartMode({
     <section className="opti-slide-up rounded-2xl border border-[#d5dded] bg-white p-6">
       <h1 className="text-2xl font-extrabold text-slate-900">Smart mode</h1>
       <p className="mt-1 text-sm text-slate-600">Type goal, choose budget preference, then compare generated bundles before checkout.</p>
+      {!!modelMeta?.active_model?.model_version && (
+        <p className="mt-2 text-xs font-semibold text-slate-500">
+          Model-powered bundles: {modelMeta.active_model.model_version}
+          {modelMeta?.model_applied ? ' (applied)' : ' (metadata only)'}
+        </p>
+      )}
 
       {!showResult && (
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.1em] text-slate-500">

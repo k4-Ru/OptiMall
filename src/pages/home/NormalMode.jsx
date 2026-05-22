@@ -25,6 +25,7 @@ export default function NormalMode({
   hasActivityRecommendations,
   loadingRecommendations,
   recommendationError,
+  recommendationMeta,
   recommendedProducts,
   addToCart,
   filteredProducts,
@@ -152,6 +153,12 @@ export default function NormalMode({
     </p>
     {loadingRecommendations && <p className="text-xs text-slate-500">Refreshing recommendations...</p>}
     {!!recommendationError && <p className="text-xs text-red-600">{recommendationError}</p>}
+    {!!recommendationMeta?.active_model?.model_version && (
+      <p className="text-[11px] font-semibold text-slate-500">
+        Model-powered: {recommendationMeta.active_model.model_version}
+        {recommendationMeta?.model_applied ? ' (applied)' : ' (metadata only)'}
+      </p>
+    )}
     <div className="opti-enter-soft opti-stagger-2 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
       {loadingProducts && Array.from({ length: 6 }).map((_, idx) => (
         <div key={`rec-skeleton-${idx}`} className="opti-shimmer w-[180px] shrink-0 animate-pulse rounded-xl border border-[#d5dded] bg-white p-3">
