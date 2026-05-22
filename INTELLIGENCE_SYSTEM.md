@@ -175,7 +175,7 @@ Output includes intent key/label/confidence used by Smart Mode.
 8. **Confidence shaping**
    - clamp confidence into stable display range for UI consistency.
 9. **User override (optional)**
-   - if user chooses a different intent, override detected intent for downstream ranking/penalties.
+   - if user chooses a different intent, override detected inteent for downstream ranking/penalties.
 
 ### What the detector uses vs does not use
 - Uses:
