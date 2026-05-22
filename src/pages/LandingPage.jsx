@@ -11,9 +11,52 @@ import {
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+const DEMO_BUDGET = 1000;
+const demoCart = [
+  {
+    id: 151,
+    name: 'Student Planner Notebook',
+    category: 'Study Essentials',
+    price: 199,
+    image: '/images/151.png',
+  },
+  {
+    id: 152,
+    name: 'Desk Organizer Set',
+    category: 'Study Essentials',
+    price: 349,
+    image: '/images/152.png',
+  },
+  {
+    id: 158,
+    optimizedId: 155,
+    name: 'Laptop Sleeve 14 inch',
+    optimizedName: 'A4 Bond Paper Ream',
+    category: 'Study Essentials',
+    price: 499,
+    optimizedPrice: 289,
+    image: '/images/158.png',
+    optimizedImage: '/images/155.png',
+    note: 'Smart Swap',
+  },
+];
+
+function formatPrice(value) {
+  return `\u20B1${Number(value || 0).toLocaleString()}`;
+}
+
 export default function LandingPage() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [isOptimized, setIsOptimized] = useState(false);
+  const cartTotal = demoCart.reduce((sum, item) => sum + Number(item.price || 0), 0);
+  const optimizedTotal = demoCart.reduce(
+    (sum, item) => sum + Number(isOptimized ? item.optimizedPrice || item.price : item.price),
+    0
+  );
+  const activeTotal = isOptimized ? optimizedTotal : cartTotal;
+  const savedAmount = cartTotal - optimizedTotal;
+  const overBudget = Math.max(0, activeTotal - DEMO_BUDGET);
+  const progress = Math.min(100, (activeTotal / DEMO_BUDGET) * 100);
 
   const handleOptimize = () => {
     setIsOptimizing(true);
@@ -108,75 +151,45 @@ export default function LandingPage() {
               
               <div className="flex items-center gap-1.5 rounded-full bg-[#f1f5f9] px-2.5 py-1">
                 <span className="text-[10px] font-bold text-slate-600">Budget:</span>
-                <span className="text-[11px] font-black text-[#1A2A54]">$150.00</span>
+                <span className="text-[11px] font-black text-[#1A2A54]">{formatPrice(DEMO_BUDGET)}</span>
               </div>
             </div>
 
             {/* Cart Items List */}
             <div className="mt-5 space-y-3.5">
-              {/* Item 1 */}
-              <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-[#f8fafc] p-3 transition-all duration-300">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white border border-slate-200 font-bold text-xs text-slate-700">
-                    KB
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800">Mechanical Keyboard</h4>
-                    <p className="text-[10px] text-slate-400 font-medium">Gaming & Typing Essentials</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  {isOptimized ? (
-                    <>
-                      <span className="text-[10px] font-bold text-slate-400 line-through mr-1.5">$99.00</span>
-                      <span className="text-xs font-extrabold text-[#FF6B00]">$74.00</span>
-                      <span className="block text-[8px] font-bold text-emerald-600">Deal Applied</span>
-                    </>
-                  ) : (
-                    <span className="text-xs font-bold text-slate-700">$99.00</span>
-                  )}
-                </div>
-              </div>
+              {demoCart.map((item) => {
+                const wasSwapped = isOptimized && item.optimizedPrice;
+                const name = wasSwapped ? item.optimizedName : item.name;
+                const image = wasSwapped ? item.optimizedImage : item.image;
+                const price = wasSwapped ? item.optimizedPrice : item.price;
 
-              {/* Item 2 */}
-              <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-[#f8fafc] p-3 transition-all duration-300">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white border border-slate-200 font-bold text-xs text-slate-700">
-                    MS
+                return (
+                  <div key={wasSwapped ? item.optimizedId : item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-[#f8fafc] p-3 transition-all duration-300">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <img
+                        src={image}
+                        alt={name}
+                        className="h-12 w-12 shrink-0 rounded-lg border border-slate-200 bg-white object-contain p-1"
+                      />
+                      <div className="min-w-0">
+                        <h4 className="truncate text-xs font-bold text-slate-800">{name}</h4>
+                        <p className="truncate text-[10px] font-medium text-slate-400">{item.category}</p>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {wasSwapped ? (
+                        <>
+                          <span className="mr-1.5 text-[10px] font-bold text-slate-400 line-through">{formatPrice(item.price)}</span>
+                          <span className="text-xs font-extrabold text-[#FF6B00]">{formatPrice(price)}</span>
+                          <span className="block text-[8px] font-bold text-emerald-600">{item.note}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs font-bold text-slate-700">{formatPrice(price)}</span>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800">Ergonomic Mouse</h4>
-                    <p className="text-[10px] text-slate-400 font-medium">Wireless Multi-device</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  {isOptimized ? (
-                    <>
-                      <span className="text-[10px] font-bold text-slate-400 line-through mr-1.5">$49.00</span>
-                      <span className="text-xs font-extrabold text-[#FF6B00]">$44.00</span>
-                      <span className="block text-[8px] font-bold text-emerald-600">Coupon Swap</span>
-                    </>
-                  ) : (
-                    <span className="text-xs font-bold text-slate-700">$49.00</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Item 3 */}
-              <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-[#f8fafc] p-3 transition-all duration-300">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white border border-slate-200 font-bold text-xs text-slate-700">
-                    MT
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800">Desk Mat (Large)</h4>
-                    <p className="text-[10px] text-slate-400 font-medium">Anti-slip Textured</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-bold text-slate-700">$19.00</span>
-                </div>
-              </div>
+                );
+              })}
             </div>
 
             {/* Budget Progress Bar */}
@@ -184,7 +197,7 @@ export default function LandingPage() {
               <div className="flex justify-between text-xs font-bold text-slate-700 mb-1.5">
                 <span>Cart Total</span>
                 <span className={isOptimized ? 'text-emerald-600' : 'text-[#FF6B00]'}>
-                  {isOptimized ? '$137.00' : '$167.00'}
+                  {formatPrice(activeTotal)}
                 </span>
               </div>
               
@@ -193,7 +206,7 @@ export default function LandingPage() {
                   className={`h-full transition-all duration-500 ease-out ${
                     isOptimized ? 'bg-emerald-500' : 'bg-[#FF6B00]'
                   }`}
-                  style={{ width: isOptimized ? '91.3%' : '100%' }}
+                  style={{ width: `${progress}%` }}
                 />
               </div>
 
@@ -202,12 +215,12 @@ export default function LandingPage() {
                 {isOptimized ? (
                   <div className="flex items-center gap-2 text-emerald-700">
                     <CheckCircle className="h-4 w-4" />
-                    <span>Success! Saved $30.00 (91% of Budget)</span>
+                    <span>Success! Saved {formatPrice(savedAmount)} ({Math.round(progress)}% of Budget)</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-[#FF6B00]">
                     <span className="flex h-2 w-2 rounded-full bg-[#FF6B00] animate-ping" />
-                    <span>Cart exceeds budget by $17.00</span>
+                    <span>Cart exceeds budget by {formatPrice(overBudget)}</span>
                   </div>
                 )}
               </div>

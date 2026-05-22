@@ -236,14 +236,10 @@ const PRODUCT_WITH_METADATA_SQL = `
     s.rating AS seller_rating,
     COALESCE(pm.popularity_score, 0) AS popularity_score,
     pm.tag_vector,
-    pm.extra,
-    s.name     AS seller_name,
-    s.location AS seller_location,
-    s.rating   AS seller_rating
+    pm.extra
   FROM products p
   LEFT JOIN sellers s ON s.id = p.seller_id
   LEFT JOIN product_metadata pm ON pm.product_id = p.id
-  LEFT JOIN sellers s ON s.id = p.seller_id
 `;
 
 
